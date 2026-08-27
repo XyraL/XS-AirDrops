@@ -46,8 +46,7 @@ local function loadModel(model)
 end
 
 -- Spawns the crate the player can walk up to. Local, unnetworked, frozen.
--- Used when the configured crate model will not load. Anything is better than
--- an invisible crate the player is told to go and open.
+-- Used when the configured model will not load, so a drop is never invisible.
 local CRATE_FALLBACK = 'prop_mil_crate_01'
 
 function AirdropSpawnCrate(coords)
@@ -73,11 +72,8 @@ function AirdropSpawnCrate(coords)
 
         Airdrop.prop = prop
 
-        -- Where it REALLY is, after the ground snap. The stored location can be
-        -- a couple of metres off vertically — captured from a ped standing on a
-        -- kerb, or a Z typed in by hand — and the reach check measures in 3D, so
-        -- that difference alone could put the crate out of reach while you are
-        -- standing on top of it.
+        -- Where it really ended up after the ground snap, which the reach check
+        -- measures against.
         Airdrop.propCoords = GetEntityCoords(prop)
     end)
 end

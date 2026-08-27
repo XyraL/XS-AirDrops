@@ -6,15 +6,8 @@ Config.Bridges = {
     inventory = 'auto',   -- auto | ox_inventory | qb-inventory | qs-inventory | ps-inventory
 }
 
--- ─────────────────────────────────────────────────────────────────────────────
--- What this script does, and deliberately does not do
---
--- A drop is a CONTEST. The script announces one, flies it in, and puts real
--- loot on the ground where everyone can see it. Who fights over it, and whether
--- fighting is allowed at all, is your server's business — this never touches
--- damage, never flags players, and never overrides your PvP rules. That is what
--- lets it run anywhere.
--- ─────────────────────────────────────────────────────────────────────────────
+-- Supply drops get announced, flown in, and left on the ground for whoever
+-- turns up. It never touches damage or PvP rules, so it runs on any server.
 
 Config.Debug = false
 
@@ -69,51 +62,30 @@ Config.Drop = {
     -- Once open, how long the crate stays lootable before it despawns.
     OpenDuration = 300,
 
-    -- If nobody cracks it at all, it disappears after this.
-    --
-    -- This clock only runs out on an EMPTY zone. If anyone is inside the zone
-    -- when it would expire — or is part-way through cracking it — the crate is
-    -- held instead, so it never vanishes out from under the people who actually
-    -- travelled for it. See PresenceGrace.
+    -- Uncracked crate gives up after this. Only counts down on an empty zone —
+    -- if anyone is there, or mid-crack, it holds instead. See PresenceGrace.
     AbandonedAfter = 900,
 
-    -- How long an emptied crate sticks around before it despawns.
-    --
-    -- It used to vanish the instant the last item left, which ends the event
-    -- mid-scene: anyone still driving there arrives at nothing with no idea
-    -- why, and a fight happening over the crate loses the thing it was about.
-    -- The empty box lingering says "you were too late" far better than an empty
-    -- field does.
-    --
-    -- Nothing is left to take, so this one is a hard timer — being stood in the
-    -- zone does not extend it.
+    -- An emptied crate sticks around this long so late arrivals can see they
+    -- missed it. Hard timer — standing in the zone does not extend it.
     EmptyLinger = 60,
 
-    -- Extra time granted when the crate would have expired but somebody is
-    -- there. Applied again each time it runs out while they are still around,
-    -- so the crate outlives anyone who is genuinely using it.
+    -- Granted each time the timer runs out with someone still in the zone, so a
+    -- crate outlives whoever is actually using it.
     PresenceGrace = 120,
 
-    -- The stop on that. Held or not, a crate is gone this long after it landed,
-    -- so one player standing in the zone cannot keep it alive all night.
-    -- 0 = no cap, which really does mean it can be camped forever.
+    -- Gone this long after landing no matter what, so nobody can camp one all
+    -- night. 0 = no cap.
     MaxLifetime = 3600,
 
     -- Metres a player may drift from the crate before cracking cancels. The
     -- server re-checks this on completion too, so a teleport does not help.
-    -- 3 metres was too tight against a crate you are standing next to, once
-    -- the prop's own size is in the measurement. The server allows a little
-    -- more than this again, so a slow position update cannot rob you of it.
+    -- How close you must be to crack or loot. The server allows a little more,
+    -- to cover the crate sitting lower than the point it was placed from.
     CrackDistance = 5.0,
 
-    -- How close you must be for the on-screen drop status to appear, in metres.
-    --
-    -- A permanent banner for something happening across the map is clutter —
-    -- the blip already says a drop exists, and the countdown only matters once
-    -- you have decided to go. Being inside the contested zone always shows it,
-    -- whatever this is set to.
-    --
-    -- 0 = always on screen while a drop is running.
+    -- How near you must be for the on-screen status to show. Inside the zone
+    -- always shows it. 0 = always on screen.
     HudDistance = 400.0,
 }
 
@@ -125,9 +97,7 @@ Config.Delivery = {
     Flyover = true,
 
     PlaneModel = 'titan',
-    -- A proper military supply crate. Big enough to read as a drop from a
-    -- distance, which an ammo box is not. If it will not load, the script falls
-    -- back to one that will rather than spawning nothing.
+    -- Falls back to a working prop if this one will not load.
     CrateModel = 'prop_mil_crate_01',
 
     Altitude = 320.0,
@@ -138,13 +108,10 @@ Config.Delivery = {
 }
 
 -- ── Where drops land ─────────────────────────────────────────────────────────
--- Deliberately empty. Locations are built in game from the admin panel, where
--- you can stand on the spot and capture it, rather than guessing coordinates
--- in a text file.
+-- Empty on purpose. Build these in game from /airdrops, standing on the spot.
 --
--- Anything listed here is seeded into the database on FIRST START ONLY. After
--- that the database owns them and this list is ignored, so leaving it empty
--- means the panel is the only place locations come from.
+-- Anything here is seeded into the database on first start only; after that the
+-- database owns them and this list is ignored.
 Config.Locations = {}
 
 -- ── Loot ─────────────────────────────────────────────────────────────────────
@@ -261,16 +228,13 @@ Config.Blip = {
     Colour = 5,          -- the pin itself
     Scale  = 1.1,
 
-    -- The contested area, drawn as a filled circle on the map rather than a
-    -- lone pin. Red because that is what every player already reads as
-    -- "something is happening here and it is not safe".
+    -- The contested area, drawn as a filled circle rather than a lone pin.
     ShowRadius = true,
     RadiusColour = 1,    -- 1 = red
     RadiusAlpha = 90,
 
-    -- The search area during the inbound window, before the exact spot is
-    -- known. Deliberately a different colour from the live zone so the two
-    -- states are not mistaken for each other at a glance.
+    -- The wider search circle while the drop is inbound. Different colour from
+    -- the live zone on purpose.
     ApproxColour = 5,    -- 5 = yellow
     ApproxAlpha = 60,
 }
@@ -298,16 +262,12 @@ Config.NotifyStyle = {
     duration = 7000,
 }
 
--- ── Who gets to take part ────────────────────────────────────────────────────
+-- ── Who takes part ───────────────────────────────────────────────────────────
+-- See    — who is told about a drop and gets the blip
+-- Collect — who can crack it and take from it
 --
--- Two separate questions, because they usually have different answers:
---   See     — who is told a drop is happening, and gets the blip
---   Collect — who can actually crack the crate and take from it
---
--- The common setup is "everyone sees it, everyone can take it". The second most
--- common is "police see every drop but cannot loot it", which makes them
--- responders rather than another gang — that is what Config.Access.Police is
--- for, and it overrides the two blocks below for those jobs.
+-- Config.Access.Police overrides both for those jobs. Setting CanCollect false
+-- there is the usual way to make police responders rather than another gang.
 Config.Access = {
     See = {
         Everyone = true,
@@ -336,18 +296,12 @@ Config.Access = {
         CanCollect = true,
     },
 
-    -- Shown to someone who tries to crack a crate they are not allowed to.
-    -- Saying nothing at all reads as the script being broken.
+    -- Shown when someone who is not allowed tries to open a crate.
     DeniedMessage = 'You have no idea how to open this.',
 }
 
 -- ── Sound ────────────────────────────────────────────────────────────────────
--- Native GTA frontend sounds, so there are no audio files to ship and nothing
--- to stream.
---
--- A drop that only announces itself in text is easy to miss entirely when you
--- are driving — which is exactly when the announcement matters, because that is
--- the moment you decide whether to turn around.
+-- Native GTA frontend sounds. No audio files to ship.
 Config.Sounds = {
     Enabled = true,
 
@@ -365,7 +319,6 @@ Config.Sounds = {
         opened    = { name = 'ROBBERY_MONEY_TOTAL', set = 'HUD_FRONTEND_CUSTOM_SOUNDSET' },
     },
 
-    -- The countdown ticks are the one cue people will tire of first, so they are
-    -- separately switchable.
+    -- Last ten seconds tick audibly.
     CountdownTicks = true,
 }

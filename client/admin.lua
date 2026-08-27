@@ -1,8 +1,5 @@
--- Admin panel: NUI plumbing.
---
--- Every callback here is a relay. Nothing is decided on this side — the server
--- re-checks permission on each one, because an admin panel that trusts its own
--- client is an admin panel anyone can open.
+-- Admin panel: NUI plumbing. Every callback is a relay; the server re-checks
+-- permission on each one.
 
 local panelOpen = false
 
@@ -33,11 +30,8 @@ local function closePanel()
     SendNUIMessage({ action = 'close' })
 end
 
--- The page has already hidden itself by the time this arrives. Calling the full
--- closePanel() here sent a 'close' message straight back, which made the page
--- call this again, forever — and a message still in flight would re-hide the
--- panel the instant it was reopened, which looked like the command had stopped
--- working.
+-- The page has already hidden itself. Do not send 'close' back or the two
+-- bounce off each other forever.
 RegisterNUICallback('closePanel', function(_, cb)
     releaseFocus()
     cb({})

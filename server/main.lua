@@ -1,17 +1,11 @@
--- Airdrop state.
+-- Airdrop state. The server owns where the crate is, when it landed, who
+-- cracked it and what is inside.
 --
--- The server owns everything that matters: where the crate is, when it landed,
--- who cracked it and what is inside. Clients are told the coordinates and draw
--- the crate themselves.
---
--- That last part is deliberate and worth stating plainly, because the obvious
--- alternative is worse. The crate is NOT a networked entity. Under OneSync,
--- ownership of a networked entity follows whichever client has it in scope, not
--- whoever created it — so a crate spawned server-side ends up owned by the
--- first player who wanders near it, and a crate spawned client-side is owned by
--- someone who can then delete it. Since the crate never needs to move, sync or
--- take damage, it is a local prop on every client and the truth lives here as a
--- coordinate. Nothing to steal, nothing to clean up after a restart.
+-- The crate is NOT a networked entity. Under OneSync an entity is owned by
+-- whichever client has it in scope, so a networked crate would end up owned by
+-- a random player who could then delete it. It never moves or takes damage, so
+-- every client draws its own local prop and the truth stays here as a
+-- coordinate.
 
 local Drop = nil
 local lastLocationIndex = nil
@@ -163,30 +157,11 @@ local function pickLocation(forcedLabel)
     return nil
 end
 
--- The search area shown before the crate is on the ground.
---
--- This used to be offset in a RANDOM direction from the real spot, so the
--- circle visibly jumped across the map at landing — you drove to one place and
--- the zone moved somewhere else entirely.
---
--- It is snapped to a grid instead. The centre is stable, sits within half a
--- grid square of the real coordinate, and the landing zone always appears
--- inside or overlapping it, so the search narrows rather than relocating.
---
--- The exact coordinate is still never sent while the drop is inbound. Centring
--- the circle on the real spot would have fixed the jump too, but it would put
--- the precise location in front of every client a minute and a half early, and
--- a modified client would simply read it.
+-- The marker never moves. It sits on the real spot from announcement to
+-- despawn and only the circle changes size: wide while inbound, tight once the
+-- crate is down. Moving it meant driving somewhere and watching the zone
+-- relocate on landing.
 local function approximate(coords)
-    -- The marker does not move. It sits on the real spot the whole time and the
-    -- CIRCLE shrinks: a wide search area while the crate is inbound, the
-    -- contested zone once it is down.
-    --
-    -- Two earlier versions moved it — a random offset, then a grid snap — and
-    -- both meant driving to one place and watching the zone relocate on
-    -- landing. Not moving it is worth more than the secrecy was: the wide
-    -- circle already hides where in it the crate will be, and the plane flies
-    -- overhead in plain sight anyway.
     return coords
 end
 
@@ -227,16 +202,10 @@ local function publicState()
     return payload
 end
 
--- Sent only to players allowed to know. Anyone else is told the drop ended,
--- so a player who changes job mid-event loses the blip rather than keeping a
--- stale one forever.
--- Nudges any open admin panel to re-read. Sent to everyone rather than
--- tracking who has one open: the client ignores it unless a panel exists, and
--- a list of open panels is state that goes stale the moment someone drops.
---
--- Defined above broadcast() deliberately — a Lua local referenced before its
--- definition is simply nil at the call, which fails at runtime rather than at
--- load.
+-- Only to players allowed to know. Everyone else is told it ended, so changing
+-- job mid-event drops the blip instead of leaving a stale one.
+-- Nudges any open admin panel to re-read. Sent to everyone; the client ignores
+-- it unless a panel is open. Must stay above broadcast(), which calls it.
 local function refreshPanels()
     TriggerClientEvent('cipher-airdrops:client:refreshPanel', -1)
 end
@@ -407,11 +376,8 @@ end
 -- you must have been near the crate when you started, still be near it when you
 -- claim to have finished, and enough time must actually have passed.
 
--- Is anyone inside the contested zone?
---
--- The expiry clock is only allowed to run out on an empty zone. A crate that
--- despawns while people are stood on it is worse than one that lingers: they
--- travelled for it, and from their side the event simply deleted itself.
+-- Is anyone inside the contested zone? The expiry clock only runs out on an
+-- empty one.
 local function anyoneInZone()
     if not Drop or not Drop.coords then return false end
 
@@ -428,8 +394,7 @@ local function anyoneInZone()
     return false
 end
 
--- Someone part-way through the crack animation. Checked separately from the
--- zone because this is the one moment where despawning is unambiguously wrong.
+-- Someone part-way through the crack animation.
 local function anyoneCracking()
     if not Drop or not Drop.cracks then return false end
 
@@ -448,18 +413,11 @@ local function nearCrate(src)
     local pos = GetEntityCoords(ped)
     local reach = (Config.Drop.CrackDistance or 5.0) + 3.0
 
-    -- Horizontal distance, with height checked separately and loosely.
-    --
-    -- A 3D check against the stored coordinate does not work: the crate is
-    -- placed on the GROUND under that point, and the point itself came from
-    -- wherever an admin was standing. Capture a spot on top of an embankment
-    -- and the crate lands at the water's edge several metres below it — enough
-    -- height difference on its own to fail an 8m 3D check while the player is
-    -- pressed against the box.
-    --
-    -- The crate never moves horizontally from the stored x/y, so that is the
-    -- axis worth being strict about. The height allowance only has to cover the
-    -- drop from the stored point to the ground.
+    -- Horizontal distance, height checked separately and loosely. The crate is
+    -- placed on the ground under the stored point, which may itself have been
+    -- captured on top of an embankment — a 3D check fails on that height
+    -- difference alone. The crate never moves horizontally, so that is the axis
+    -- worth being strict about.
     local flat = #(vector3(pos.x, pos.y, 0.0) - vector3(Drop.coords.x, Drop.coords.y, 0.0))
     local drop = math.abs(pos.z - Drop.coords.z)
 
@@ -558,9 +516,8 @@ end)
 -- to whoever is searching. It keeps the scramble — being first still matters,
 -- and being second still gets you something.
 -- ox_inventory hands the crate over as a real stash, so the server never sees
--- the items leave. Polled instead, only while a crate is actually open — a few
--- seconds of latency on the "emptied" message costs nothing, and the other
--- backends already know because the server hands the loot out itself.
+-- items leave. Polled only while one is open. Other backends already know,
+-- because the server hands the loot out itself.
 CreateThread(function()
     while true do
         Wait(4000)
@@ -573,11 +530,8 @@ CreateThread(function()
     end
 end)
 
--- The crate has been cleaned out.
---
--- This does NOT end the drop. The crate stays as an empty husk for
--- Config.Drop.EmptyLinger so the event has an ending people can see, rather
--- than the objective evaporating the moment somebody grabs the last stack.
+-- Cleaned out. Does NOT end the drop — the empty crate stays for
+-- Config.Drop.EmptyLinger so late arrivals can see they missed it.
 function markEmptied()
     if not Drop or Drop.emptied then return end
 
@@ -733,12 +687,9 @@ end
 
 -- ── Housekeeping ─────────────────────────────────────────────────────────────
 
--- Expiry.
---
--- The timer is a cleanup for crates nobody came for, not a countdown that
--- deletes the event underneath the people playing it. When it runs out with
--- somebody in the zone the crate is held for another PresenceGrace, as many
--- times as needed — up to MaxLifetime, so it cannot be camped indefinitely.
+-- Expiry. Cleanup for crates nobody came for, not a countdown that deletes the
+-- event under the people playing it: if anyone is there it holds for another
+-- PresenceGrace, up to MaxLifetime.
 CreateThread(function()
     while true do
         Wait(5000)

@@ -1,28 +1,25 @@
-# Cipher — Airdrops
+<h1 align="center">Cipher Airdrops</h1>
 
-Contested supply drops for FiveM. A crate is announced, flown in by cargo plane,
-parachuted onto the map and cracked open by whoever gets there and holds the
-ground long enough.
+<p align="center">Contested supply drops for <strong>QBox</strong> and <strong>QBCore</strong> — announced, flown in by cargo plane, and cracked open by whoever holds the ground.</p>
 
-Standalone for **QBox** and **QBCore**, with an in-game admin panel for
-building drop locations and loot tables.
+<p align="center">
+  <a href="https://github.com/XyraL/cipher-airdrops/releases"><img src="https://img.shields.io/github/v/release/XyraL/cipher-airdrops?style=flat-square&color=f5a524&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/framework-QBox%20%7C%20QBCore-55dcff?style=flat-square" alt="framework">
+  <img src="https://img.shields.io/badge/price-free-30d158?style=flat-square" alt="price">
+  <a href="https://xyralscripts.dev/docs-cipher-airdrops"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
+  <a href="https://discord.gg/XRURAw4TM2"><img src="https://img.shields.io/badge/support-discord-5865F2?style=flat-square" alt="support"></a>
+</p>
 
 ---
 
-## What it is, and what it deliberately isn't
+## It never touches PvP
 
-A drop is a **contest**. The script announces one, flies it in, and puts real
-loot on the ground where everyone can see it.
+No damage flags, no combat rules, no overriding who may shoot whom. The script
+puts loot on the ground and announces it; whether a fight happens over that, and
+whether it is allowed, is your server's business.
 
-**It never touches PvP.** It does not enable or disable damage, does not flag
-players, and does not override your server's rules about who may shoot whom.
-Whether a fight breaks out over the crate — and whether that fight is allowed —
-is entirely your server's business.
-
-That is a deliberate design choice, not a missing feature. It means the script
-runs on a hardcore PvP server and a strict-RP server without either of them
-having to fight it, and it means installing this never changes how combat works
-anywhere else on your map.
+That is why it installs on a hardcore PvP server and a strict-RP server without
+either having to fight it.
 
 ---
 
@@ -49,18 +46,13 @@ anywhere else on your map.
 
 ### It will not vanish out from under you
 
-The despawn timer is cleanup for crates nobody came for, not a countdown that
-deletes the event while people are playing it.
+The despawn timer only runs out on an **empty** zone. If anyone is there, or
+mid-crack, the crate is held for another `PresenceGrace` — repeatedly, so it
+outlives whoever is using it. `MaxLifetime` caps that from landing so nobody
+can camp one all night.
 
-When the timer runs out, the crate only goes if the zone is **empty**. If anyone
-is inside it, or part-way through cracking, the crate is held for another
-`PresenceGrace` — and again, as many times as it takes. So a crate outlives
-whoever is actually using it, and still gets tidied up on a quiet server where
-one person set the player minimum to 1 and then never went.
-
-`MaxLifetime` is the stop on that, measured from landing, so a single player
-standing in the zone cannot keep one alive all night. Set it to 0 to remove the
-cap.
+An emptied crate lingers for `EmptyLinger` rather than vanishing on the last
+item, so late arrivals can see they missed it.
 
 Each of those steps has an audio cue, using native GTA sounds so there are no
 files to stream. The last ten seconds of the warning window tick audibly — that

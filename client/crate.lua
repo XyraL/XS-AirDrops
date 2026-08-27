@@ -20,10 +20,8 @@ local function nearCrate()
         return dist <= reach, dist
     end
 
-    -- No prop yet. Fall back to the stored point, but measure it the same way
-    -- the server does — flat, with a loose height allowance. A location
-    -- captured on top of an embankment sits well above the ground the crate
-    -- will rest on, and a 3D check would call that "too far" on height alone.
+    -- No prop yet. Measure the stored point the way the server does: flat, with
+    -- a loose height allowance.
     local flat = #(vector3(pos.x, pos.y, 0.0) - vector3(data.coords.x, data.coords.y, 0.0))
     local drop = math.abs(pos.z - data.coords.z)
 

@@ -65,12 +65,10 @@ if IS_SERVER then
         return Inv.name == 'ox_inventory'
     end
 
-    -- Has everything been taken out of the crate?
+    -- Has the crate been emptied? Only ox_inventory can answer; the others
+    -- create their stash lazily and cannot be read back.
     --
-    -- Only ox_inventory can answer: the other backends create their stash
-    -- lazily on open and give no way to read it back, so the drop there is
-    -- tracked by the loot list the server still holds. nil means "cannot tell",
-    -- which callers must treat differently from "no".
+    -- Returns nil for "cannot tell", which is not the same as false.
     function Inv.StashIsEmpty(id)
         if Inv.name ~= 'ox_inventory' then return nil end
 

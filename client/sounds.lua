@@ -1,13 +1,8 @@
--- Audio cues.
+-- Audio cues. Native GTA frontend sounds, nothing to stream.
 --
--- Native GTA frontend sounds only, so there is nothing to stream and no audio
--- files in the resource. Same approach as cipher-drugs.
---
--- Cues are driven off the state the server already sends, rather than being
--- fired by separate events. One less thing to keep in step, and a player who
--- joins mid-drop gets the audio state that matches what they are actually
--- looking at instead of a sting for something that happened before they
--- connected.
+-- Driven off the state the server already sends rather than separate events, so
+-- someone joining mid-drop does not get a sting for something that already
+-- happened.
 
 function PlayDropSound(key)
     local cfg = Config.Sounds

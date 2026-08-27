@@ -1,13 +1,7 @@
--- The on-screen drop status.
+-- On-screen drop status. Right-hand side, out of the compass's way.
 --
--- Deliberately small and out of the way. It sits under the minimap side of the
--- screen rather than across the top middle, where it fought with the compass
--- and looked like a debug readout.
---
--- It only appears when you are actually near the drop. A permanent banner for
--- an event happening on the other side of the map is clutter — the blip already
--- tells you it exists, and the countdown only matters once you are committed to
--- going. Config.Drop.HudDistance decides "near", or set it to 0 to always show.
+-- Only shows within Config.Drop.HudDistance, or anywhere inside the zone. Set
+-- that to 0 to keep it up the whole time.
 
 local function fmtClock(seconds)
     if seconds < 0 then seconds = 0 end
