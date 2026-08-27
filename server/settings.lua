@@ -91,6 +91,52 @@ Settings.SCHEMA = {
       label = 'Guarantee at least',
       help  = 'A tier name. One roll is forced up to that tier or better, so a crate is never entirely bandages after a five-minute fight. Blank to disable.' },
 
+    { key = 'Loot.Slots',              group = 'Loot', type = 'number', min = 1, max = 60,
+      label = 'Crate slots',
+      help  = 'How many inventory slots the crate has. ox_inventory only.' },
+
+    { key = 'Loot.MaxWeight',          group = 'Loot', type = 'number', min = 1000, max = 2000000,
+      label = 'Crate capacity',
+      help  = 'Total weight the crate holds, in grams. ox_inventory only.' },
+
+    -- ── Access ──
+    { key = 'Access.See.Everyone',     group = 'Access', type = 'bool',
+      label = 'Everyone sees drops',
+      help  = 'Off restricts announcements and the blip to the jobs and gangs below. Police are handled separately.' },
+
+    { key = 'Access.See.Jobs',         group = 'Access', type = 'list',
+      label = 'Jobs that can see',
+      help  = 'Comma separated. Only used when the switch above is off.' },
+
+    { key = 'Access.See.Gangs',        group = 'Access', type = 'list',
+      label = 'Gangs that can see' },
+
+    { key = 'Access.Collect.Everyone', group = 'Access', type = 'bool',
+      label = 'Everyone can collect',
+      help  = 'Off means only the jobs and gangs below can crack and loot a crate.' },
+
+    { key = 'Access.Collect.Jobs',     group = 'Access', type = 'list',
+      label = 'Jobs that can collect' },
+
+    { key = 'Access.Collect.Gangs',    group = 'Access', type = 'list',
+      label = 'Gangs that can collect' },
+
+    { key = 'Access.Police.Jobs',      group = 'Access', type = 'list',
+      label = 'Police jobs',
+      help  = 'Which jobs count as police for the two rules below.' },
+
+    { key = 'Access.Police.CanSee',    group = 'Access', type = 'bool',
+      label = 'Police always see drops',
+      help  = 'On means officers are told about every drop even when everything else is restricted.' },
+
+    { key = 'Access.Police.CanCollect', group = 'Access', type = 'bool',
+      label = 'Police can loot',
+      help  = 'Off turns police into responders rather than another gang: they see the drop and turn up, but cannot take from it.' },
+
+    { key = 'Access.DeniedMessage',    group = 'Access', type = 'text',
+      label = 'Refusal message',
+      help  = 'Shown to someone who tries to open a crate they are not allowed to. Saying nothing reads as the script being broken.' },
+
     -- ── Police ──
     { key = 'Police.Alert',            group = 'Police', type = 'bool',
       label = 'Alert police' },
@@ -119,6 +165,78 @@ Settings.SCHEMA = {
     { key = 'Sounds.Enabled',          group = 'Presentation', type = 'bool',
       label = 'Sound cues' },
 
+    { key = 'Police.Code',             group = 'Police', type = 'text',
+      label = 'Dispatch code',
+      help  = 'The code attached to the police alert, e.g. 10-90.' },
+
+    { key = 'Police.Title',            group = 'Police', type = 'text',
+      label = 'Dispatch title' },
+
+    { key = 'Police.Jobs',             group = 'Police', type = 'list',
+      label = 'Jobs alerted',
+      help  = 'Which jobs receive the dispatch call when a crate lands.' },
+
+    -- ── Notifications ──
+    { key = 'NotifyStyle.title',       group = 'Notifications', type = 'text',
+      label = 'Notification title' },
+
+    { key = 'NotifyStyle.icon',        group = 'Notifications', type = 'text',
+      label = 'Icon',
+      help  = 'Font Awesome name, e.g. parachute-box. Depends on your notify resource.' },
+
+    { key = 'NotifyStyle.position',    group = 'Notifications', type = 'text',
+      label = 'Position',
+      help  = 'top, top-right, bottom, bottom-right and so on. Depends on your notify resource.' },
+
+    { key = 'NotifyStyle.duration',    group = 'Notifications', type = 'number', min = 1000, max = 30000,
+      label = 'On screen for',
+      unit = 'ms' },
+
+    -- ── Aircraft ──
+    { key = 'Delivery.PlaneModel',     group = 'Aircraft', type = 'text',
+      label = 'Plane model' },
+
+    { key = 'Delivery.Altitude',       group = 'Aircraft', type = 'number', min = 50, max = 1500, unit = 'm',
+      label = 'Flight altitude',
+      help  = 'Higher looks better from the ground and takes longer to arrive on screen.' },
+
+    { key = 'Delivery.PlaneSpeed',     group = 'Aircraft', type = 'number', min = 10, max = 300,
+      label = 'Plane speed' },
+
+    { key = 'Delivery.SpawnDistance',  group = 'Aircraft', type = 'number', min = 200, max = 3000, unit = 'm',
+      label = 'Spawns this far out',
+      help  = 'How far from the drop the plane appears and disappears.' },
+
+    -- ── Map ──
+    { key = 'Blip.Sprite',             group = 'Map', type = 'number', min = 1, max = 900,
+      label = 'Blip icon',
+      help  = 'FiveM blip sprite id. 478 is a crate.' },
+
+    { key = 'Blip.Colour',             group = 'Map', type = 'number', min = 0, max = 85,
+      label = 'Blip colour',
+      help  = 'FiveM blip colour id. 1 red, 5 yellow, 2 green.' },
+
+    { key = 'Blip.Scale',              group = 'Map', type = 'number', min = 0.1, max = 3,
+      label = 'Blip size' },
+
+    { key = 'Blip.ShowRadius',         group = 'Map', type = 'bool',
+      label = 'Draw the zone circle',
+      help  = 'Off leaves a pin with no area around it, which makes a drop much harder to find.' },
+
+    { key = 'Blip.RadiusColour',       group = 'Map', type = 'number', min = 0, max = 85,
+      label = 'Zone colour',
+      help  = 'The contested area once the crate is down. Red by default.' },
+
+    { key = 'Blip.RadiusAlpha',        group = 'Map', type = 'number', min = 10, max = 255,
+      label = 'Zone opacity' },
+
+    { key = 'Blip.ApproxColour',       group = 'Map', type = 'number', min = 0, max = 85,
+      label = 'Search area colour',
+      help  = 'The wider circle shown while the drop is still inbound. Deliberately a different colour from the live zone.' },
+
+    { key = 'Blip.ApproxAlpha',        group = 'Map', type = 'number', min = 10, max = 255,
+      label = 'Search area opacity' },
+
     { key = 'Sounds.CountdownTicks',   group = 'Presentation', type = 'bool',
       label = 'Countdown ticks',
       help  = 'The last ten seconds tick audibly. The cue people tire of first, so it is separately switchable.' },
@@ -134,21 +252,32 @@ local defaults = {}
 
 -- ── Reading and writing dotted keys on Config ────────────────────────────────
 
-local function split(key)
-    local section, name = key:match('^([^.]+)%.(.+)$')
-    return section, name
+-- Walks a dotted key to the table holding it, and the final field name.
+-- Handles any depth: Drop.CrackTime, and Access.See.Jobs alike.
+local function resolve(key)
+    local parts = {}
+    for part in key:gmatch('[^.]+') do parts[#parts + 1] = part end
+    if #parts < 2 then return nil, nil end
+
+    local node = Config
+    for i = 1, #parts - 1 do
+        node = node[parts[i]]
+        if type(node) ~= 'table' then return nil, nil end
+    end
+
+    return node, parts[#parts]
 end
 
 local function readConfig(key)
-    local section, name = split(key)
-    if not section or not Config[section] then return nil end
-    return Config[section][name]
+    local node, name = resolve(key)
+    if not node then return nil end
+    return node[name]
 end
 
 local function writeConfig(key, value)
-    local section, name = split(key)
-    if not section or not Config[section] then return false end
-    Config[section][name] = value
+    local node, name = resolve(key)
+    if not node then return false end
+    node[name] = value
     return true
 end
 
@@ -157,6 +286,17 @@ end
 -- have to agree on what a boolean looks like.
 
 local function coerce(entry, raw)
+    -- Comma-separated in, Lua array out. Empty means an empty list, which is a
+    -- meaningful value here — "no jobs may collect" is a real setting.
+    if entry.type == 'list' then
+        local out = {}
+        for item in tostring(raw or ''):gmatch('[^,]+') do
+            local trimmed = item:match('^%s*(.-)%s*$')
+            if trimmed ~= '' then out[#out + 1] = trimmed end
+        end
+        return out
+    end
+
     if entry.type == 'bool' then
         if type(raw) == 'boolean' then return raw end
         return raw == 'true' or raw == '1' or raw == 1
@@ -176,6 +316,7 @@ end
 
 local function serialise(entry, value)
     if entry.type == 'bool' then return value and 'true' or 'false' end
+    if entry.type == 'list' then return table.concat(value or {}, ', ') end
     return tostring(value)
 end
 
@@ -183,7 +324,18 @@ end
 
 function Settings.Load()
     for _, entry in ipairs(Settings.SCHEMA) do
-        defaults[entry.key] = readConfig(entry.key)
+        local value = readConfig(entry.key)
+
+        -- Lists are copied, not referenced. Reset writes the default straight
+        -- back into Config, and handing over the same table would make the
+        -- "default" whatever it was last changed to.
+        if type(value) == 'table' then
+            local copy = {}
+            for i, item in ipairs(value) do copy[i] = item end
+            value = copy
+        end
+
+        defaults[entry.key] = value
     end
 
     local rows = MySQL.query.await('SELECT `key`, `value` FROM cipher_airdrop_settings') or {}
@@ -271,6 +423,18 @@ end
 function Settings.List()
     local out = {}
 
+    local function display(entry, value)
+        if entry.type == 'list' then return table.concat(value or {}, ', ') end
+        return value
+    end
+
+    local function same(entry, a, b)
+        if entry.type == 'list' then
+            return table.concat(a or {}, ',') == table.concat(b or {}, ',')
+        end
+        return tostring(a) == tostring(b)
+    end
+
     for _, entry in ipairs(Settings.SCHEMA) do
         local current = readConfig(entry.key)
         out[#out + 1] = {
@@ -282,10 +446,11 @@ function Settings.List()
             unit = entry.unit,
             min = entry.min,
             max = entry.max,
-            value = current,
-            default = defaults[entry.key],
-            -- Compared as text so 90 and 90.0 do not read as different.
-            modified = tostring(current) ~= tostring(defaults[entry.key]),
+            value = display(entry, current),
+            default = display(entry, defaults[entry.key]),
+            -- Compared as text so 90 and 90.0 do not read as different, and
+            -- element-wise for lists, whose identity would never match.
+            modified = not same(entry, current, defaults[entry.key]),
         }
     end
 
@@ -301,7 +466,15 @@ end
 local CLIENT_KEYS = {
     'Drop.CrackTime', 'Drop.CrackDistance', 'Drop.ZoneRadius', 'Drop.ApproxBlipRadius',
     'Drop.HudDistance',
-    'Delivery.Flyover', 'Delivery.CrateModel',
+
+    'Delivery.Flyover', 'Delivery.CrateModel', 'Delivery.PlaneModel',
+    'Delivery.Altitude', 'Delivery.PlaneSpeed', 'Delivery.SpawnDistance',
+
+    'Blip.Sprite', 'Blip.Colour', 'Blip.Scale', 'Blip.ShowRadius',
+    'Blip.RadiusColour', 'Blip.RadiusAlpha', 'Blip.ApproxColour', 'Blip.ApproxAlpha',
+
+    'NotifyStyle.title', 'NotifyStyle.icon', 'NotifyStyle.position', 'NotifyStyle.duration',
+
     'Sounds.Enabled', 'Sounds.CountdownTicks',
 }
 

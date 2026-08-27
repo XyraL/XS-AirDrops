@@ -56,7 +56,9 @@ function renderSettingGroup(group) {
 }
 
 function renderSettingRow(row) {
-    const id = 'set-' + row.key.replace('.', '-');
+    // Every dot, not just the first. Access.Collect.Jobs has two, and
+    // replace() with a string argument only ever swaps one.
+    const id = 'set-' + row.key.split('.').join('-');
 
     const control = row.type === 'bool'
         ? `<label class="checkbox">
