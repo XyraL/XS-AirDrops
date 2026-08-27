@@ -49,7 +49,15 @@ Settings.SCHEMA = {
 
     { key = 'Drop.AbandonedAfter',     group = 'Timings', type = 'number', min = 60, max = 7200, unit = 's',
       label = 'Give up after',
-      help  = 'An uncracked crate disappears after this.' },
+      help  = 'How long an uncracked crate waits. This clock only runs out on an empty zone — if anyone is there when it expires, the crate is held instead.' },
+
+    { key = 'Drop.PresenceGrace',      group = 'Timings', type = 'number', min = 0, max = 900, unit = 's',
+      label = 'Hold it for',
+      help  = 'Extra time given when the crate would have expired but somebody is in the zone or mid-crack. Applied again each time, so it outlives anyone actually using it.' },
+
+    { key = 'Drop.MaxLifetime',        group = 'Timings', type = 'number', min = 0, max = 86400, unit = 's',
+      label = 'Gone regardless after',
+      help  = 'The stop on holding. Measured from landing. 0 means no cap, and one player standing in the zone can keep a crate alive all night.' },
 
     -- ── Area ──
     { key = 'Drop.ZoneRadius',         group = 'Area', type = 'number', min = 20, max = 600, unit = 'm',

@@ -70,7 +70,22 @@ Config.Drop = {
     OpenDuration = 300,
 
     -- If nobody cracks it at all, it disappears after this.
+    --
+    -- This clock only runs out on an EMPTY zone. If anyone is inside the zone
+    -- when it would expire — or is part-way through cracking it — the crate is
+    -- held instead, so it never vanishes out from under the people who actually
+    -- travelled for it. See PresenceGrace.
     AbandonedAfter = 900,
+
+    -- Extra time granted when the crate would have expired but somebody is
+    -- there. Applied again each time it runs out while they are still around,
+    -- so the crate outlives anyone who is genuinely using it.
+    PresenceGrace = 120,
+
+    -- The stop on that. Held or not, a crate is gone this long after it landed,
+    -- so one player standing in the zone cannot keep it alive all night.
+    -- 0 = no cap, which really does mean it can be camped forever.
+    MaxLifetime = 3600,
 
     -- Metres a player may drift from the crate before cracking cancels. The
     -- server re-checks this on completion too, so a teleport does not help.

@@ -399,6 +399,39 @@ end
 -- you must have been near the crate when you started, still be near it when you
 -- claim to have finished, and enough time must actually have passed.
 
+-- Is anyone inside the contested zone?
+--
+-- The expiry clock is only allowed to run out on an empty zone. A crate that
+-- despawns while people are stood on it is worse than one that lingers: they
+-- travelled for it, and from their side the event simply deleted itself.
+local function anyoneInZone()
+    if not Drop or not Drop.coords then return false end
+
+    local radius = Drop.radius or Config.Drop.ZoneRadius or 120.0
+
+    for _, id in ipairs(GetPlayers()) do
+        local src = tonumber(id)
+        local ped = src and GetPlayerPed(src)
+
+        if ped and ped ~= 0 then
+            if #(GetEntityCoords(ped) - Drop.coords) <= radius then return true end
+        end
+    end
+    return false
+end
+
+-- Someone part-way through the crack animation. Checked separately from the
+-- zone because this is the one moment where despawning is unambiguously wrong.
+local function anyoneCracking()
+    if not Drop or not Drop.cracks then return false end
+
+    local cutoff = os.time() - ((Config.Drop.CrackTime or 25) + 5)
+    for _, startedAt in pairs(Drop.cracks) do
+        if startedAt >= cutoff then return true end
+    end
+    return false
+end
+
 local function nearCrate(src)
     if not Drop then return false end
     local ped = GetPlayerPed(src)
@@ -651,11 +684,33 @@ end
 
 -- ── Housekeeping ─────────────────────────────────────────────────────────────
 
+-- Expiry.
+--
+-- The timer is a cleanup for crates nobody came for, not a countdown that
+-- deletes the event underneath the people playing it. When it runs out with
+-- somebody in the zone the crate is held for another PresenceGrace, as many
+-- times as needed — up to MaxLifetime, so it cannot be camped indefinitely.
 CreateThread(function()
     while true do
         Wait(5000)
+
         if Drop and Drop.expiresAt and os.time() >= Drop.expiresAt then
-            endDrop(Drop.state == 'open' and 'looted out' or 'abandoned')
+            local since = Drop.landedAt or Drop.startedAt or os.time()
+            local cap = Config.Drop.MaxLifetime or 0
+            local pastCap = cap > 0 and (os.time() - since) >= cap
+
+            if not pastCap and (anyoneInZone() or anyoneCracking()) then
+                Drop.expiresAt = os.time() + (Config.Drop.PresenceGrace or 120)
+                Drop.heldOpen = true
+
+                -- Clients are told, so the countdown reflects the new deadline
+                -- rather than sitting at zero.
+                broadcast()
+                log('drop %s held — someone is still there', Drop.id)
+            else
+                if pastCap then log('drop %s hit MaxLifetime', Drop.id) end
+                endDrop(Drop.state == 'open' and 'looted out' or 'abandoned')
+            end
         end
     end
 end)

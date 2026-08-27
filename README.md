@@ -45,7 +45,22 @@ anywhere else on your map.
    contesting rather than just racing to.
 5. **Open.** Loot is rolled *at this moment*, server-side, and the crate becomes
    lootable by anyone who reaches it. Not just whoever cracked it.
-6. **Gone.** The crate despawns once it is emptied, or after five minutes.
+6. **Gone.** The crate despawns once it is emptied, or after its timer runs out.
+
+### It will not vanish out from under you
+
+The despawn timer is cleanup for crates nobody came for, not a countdown that
+deletes the event while people are playing it.
+
+When the timer runs out, the crate only goes if the zone is **empty**. If anyone
+is inside it, or part-way through cracking, the crate is held for another
+`PresenceGrace` — and again, as many times as it takes. So a crate outlives
+whoever is actually using it, and still gets tidied up on a quiet server where
+one person set the player minimum to 1 and then never went.
+
+`MaxLifetime` is the stop on that, measured from landing, so a single player
+standing in the zone cannot keep one alive all night. Set it to 0 to remove the
+cap.
 
 Each of those steps has an audio cue, using native GTA sounds so there are no
 files to stream. The last ten seconds of the warning window tick audibly — that
