@@ -20,8 +20,12 @@ function showPanel(name) {
     document.querySelectorAll('.nav-item').forEach(item =>
         item.classList.toggle('active', item.dataset.panel === name));
 
+    // `active`, not `hidden`. The stylesheet this panel borrows from cipher-admin
+    // hides every .panel by default and shows only .panel.active — so toggling
+    // `hidden` set the content and left all of it at display:none. Every tab
+    // rendered correctly and none of them appeared.
     document.querySelectorAll('.panel').forEach(panel =>
-        panel.classList.toggle('hidden', panel.id !== 'panel-' + name));
+        panel.classList.toggle('active', panel.id === 'panel-' + name));
 
     PANELS[name]();
 }

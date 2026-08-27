@@ -7,6 +7,23 @@
 -- ─────────────────────────────────────────────────────────────
 Framework = { name = nil, core = nil }
 
+-- config.lua is a shared_script sitting next to @ox_lib/init.lua. If ox_lib has
+-- not started yet, that whole block can fail to run, config.lua never executes,
+-- and every file after it sees Config as nil.
+--
+-- Without this you get three "attempt to index a nil value (global 'Config')"
+-- errors pointing at the bridges and server/main, none of which is the actual
+-- problem. This is the first file to load in both contexts, so it is where the
+-- real cause gets named.
+if not Config then
+    print(('^1[cipher-airdrops]^0 config.lua did not load, so this resource cannot start.\n'
+        .. '  Almost always start order. In server.cfg, these must come first:\n'
+        .. '    ensure ox_lib\n'
+        .. '    ensure oxmysql\n'
+        .. '    ensure %s'):format(GetCurrentResourceName()))
+    return
+end
+
 local forced = Config.Bridges and Config.Bridges.framework or 'auto'
 
 if forced == 'qbox' or (forced == 'auto' and GetResourceState('qbx_core') == 'started') then
