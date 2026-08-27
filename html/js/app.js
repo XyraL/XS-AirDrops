@@ -8,6 +8,7 @@ const PANELS = {
     locations: renderLocations,
     loot:      renderLoot,
     history:   renderHistory,
+    settings:  renderSettings,
 };
 
 let currentPanel = 'live';

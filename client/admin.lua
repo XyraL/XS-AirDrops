@@ -48,6 +48,7 @@ local RELAYS = {
     'getLocations', 'saveLocation', 'deleteLocation',
     'getLoot', 'saveTier', 'deleteTier', 'saveLoot', 'deleteLoot',
     'getHistory',
+    'getSettings', 'saveSetting', 'resetSetting',
 }
 
 for _, name in ipairs(RELAYS) do

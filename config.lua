@@ -306,3 +306,32 @@ Config.Access = {
     -- Saying nothing at all reads as the script being broken.
     DeniedMessage = 'You have no idea how to open this.',
 }
+
+-- ── Sound ────────────────────────────────────────────────────────────────────
+-- Native GTA frontend sounds, so there are no audio files to ship and nothing
+-- to stream.
+--
+-- A drop that only announces itself in text is easy to miss entirely when you
+-- are driving — which is exactly when the announcement matters, because that is
+-- the moment you decide whether to turn around.
+Config.Sounds = {
+    Enabled = true,
+
+    Events = {
+        -- A drop has been called. The one cue that has to cut through.
+        announced = { name = 'Beast_Barrage',      set = 'GTAO_Beast_Barrage_Sounds' },
+
+        -- Last ten seconds of the warning window, once per second.
+        tick      = { name = 'TIMER_STOP',         set = 'HUD_MINI_GAME_SOUNDSET' },
+
+        -- The crate is on the ground.
+        landed    = { name = 'CHECKPOINT_PERFECT', set = 'HUD_MINI_GAME_SOUNDSET' },
+
+        -- Somebody got it open.
+        opened    = { name = 'ROBBERY_MONEY_TOTAL', set = 'HUD_FRONTEND_CUSTOM_SOUNDSET' },
+    },
+
+    -- The countdown ticks are the one cue people will tire of first, so they are
+    -- separately switchable.
+    CountdownTicks = true,
+}

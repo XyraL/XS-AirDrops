@@ -25,10 +25,12 @@ shared_scripts {
 client_scripts {
     'bridge/framework.lua',
     'bridge/inventory.lua',
+    'client/settings.lua',
     'client/main.lua',
     'client/delivery.lua',
     'client/crate.lua',
     'client/hud.lua',
+    'client/sounds.lua',
     'client/dispatch.lua',
     'client/admin.lua',
 }
@@ -38,6 +40,7 @@ server_scripts {
     'bridge/framework.lua',
     'bridge/inventory.lua',
     'server/data.lua',
+    'server/settings.lua',
     'server/loot.lua',
     'server/main.lua',
     'server/admin.lua',
@@ -54,4 +57,5 @@ files {
     'html/js/panels/locations.js',
     'html/js/panels/loot.js',
     'html/js/panels/history.js',
+    'html/js/panels/settings.js',
 }

@@ -29,6 +29,7 @@
             <li class="nav-item" data-panel="loot"><span class="nav-icon">&#9679;</span><span class="nav-label">Loot Tables</span><span class="nav-badge" id="badge-loot"></span></li>
             <li class="nav-divider"></li>
             <li class="nav-item" data-panel="history"><span class="nav-icon">&#9679;</span><span class="nav-label">History</span></li>
+            <li class="nav-item" data-panel="settings"><span class="nav-icon">&#9679;</span><span class="nav-label">Settings</span><span class="nav-badge" id="badge-settings"></span></li>
         </ul>
         <div id="sidebar-footer">
             <button class="btn btn-ghost btn-sm" id="btn-close">Close</button>
@@ -40,6 +41,7 @@
         <div class="panel hidden" id="panel-locations"></div>
         <div class="panel hidden" id="panel-loot"></div>
         <div class="panel hidden" id="panel-history"></div>
+        <div class="panel hidden" id="panel-settings"></div>
     </main>
 </div>
 </div>
@@ -99,6 +101,27 @@ const MOCK = {
               outcome: 'abandoned', started_at: '2026-08-27 15:20:00', age_seconds: 97200, contents: null },
         ],
     },
+    getSettings: {
+        rows: [
+            { key:'Schedule.Enabled', group:'Schedule', type:'bool', label:'Automatic drops',
+              help:'Off means drops only happen when someone calls one.', value:true, default:true, modified:false },
+            { key:'Schedule.MinInterval', group:'Schedule', type:'number', min:5, max:480, unit:'min',
+              label:'Minimum gap', help:'The gap is randomised between these two.', value:45, default:45, modified:false },
+            { key:'Schedule.MaxInterval', group:'Schedule', type:'number', min:5, max:480, unit:'min',
+              label:'Maximum gap', value:90, default:90, modified:false },
+            { key:'Drop.WarningTime', group:'Timings', type:'number', min:15, max:900, unit:'s',
+              label:'Warning window', help:'This is the window players travel in.', value:120, default:90, modified:true },
+            { key:'Drop.CrackTime', group:'Timings', type:'number', min:3, max:180, unit:'s',
+              label:'Crack time', help:'How long you stand exposed at the crate.', value:25, default:25, modified:false },
+            { key:'Drop.ZoneRadius', group:'Area', type:'number', min:20, max:600, unit:'m',
+              label:'Contested radius', value:140, default:120, modified:true },
+            { key:'Loot.GuaranteeAtLeast', group:'Loot', type:'text',
+              label:'Guarantee at least', help:'A tier name. Blank to disable.', value:'uncommon', default:'uncommon', modified:false },
+            { key:'Police.Alert', group:'Police', type:'bool', label:'Alert police', value:true, default:true, modified:false },
+            { key:'Sounds.CountdownTicks', group:'Presentation', type:'bool',
+              label:'Countdown ticks', help:'The cue people tire of first.', value:true, default:true, modified:false },
+        ],
+    },
     getPosition: { x: 1747.24, y: 3286.11, z: 41.08 },
 };
 
@@ -114,6 +137,7 @@ window.fetch = (url, opts) => {
 <script src="js/panels/locations.js"></script>
 <script src="js/panels/loot.js"></script>
 <script src="js/panels/history.js"></script>
+<script src="js/panels/settings.js"></script>
 <script src="js/app.js"></script>
 
 <script>

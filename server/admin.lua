@@ -57,7 +57,7 @@ admin('startDrop', function(src, data)
         if not location then return { ok = false, error = 'That location no longer exists' } end
     end
 
-    local ok, err = Airdrops.Start(location, GetPlayerName(src))
+    local ok, err = Airdrops.Start(location, GetPlayerName(src), { silent = data.silent == true })
     if not ok then return { ok = false, error = err } end
     return { ok = true }
 end)
@@ -124,6 +124,24 @@ end)
 
 admin('deleteLoot', function(_, data)
     local ok, err = Data.DeleteLoot(data.id)
+    if not ok then return { ok = false, error = err } end
+    return { ok = true }
+end)
+
+-- ── Settings ─────────────────────────────────────────────────────────────────
+
+admin('getSettings', function()
+    return { rows = Settings.List() }
+end)
+
+admin('saveSetting', function(src, data)
+    local ok, err = Settings.Set(data.key, data.value, GetPlayerName(src))
+    if not ok then return { ok = false, error = err } end
+    return { ok = true }
+end)
+
+admin('resetSetting', function(_, data)
+    local ok, err = Settings.Reset(data.key)
     if not ok then return { ok = false, error = err } end
     return { ok = true }
 end)

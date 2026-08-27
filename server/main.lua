@@ -78,12 +78,30 @@ local function canCollect(src)
     return gang and inList(gang.name, rule.Gangs) or false
 end
 
+local function isAdminSrc(src)
+    if Framework.IsAdmin(src) then return true end
+    for _, ace in ipairs(Config.AdminCommand.Aces or {}) do
+        if IsPlayerAceAllowed(src, ace) then return true end
+    end
+    return false
+end
+
 -- Everyone currently allowed to know about a drop.
+--
+-- A silent drop narrows this to admins only. That is the whole mechanism: the
+-- blip, the announcements, the countdown and the police alert all read from
+-- this list, so restricting it here makes the drop invisible everywhere at once
+-- rather than needing a check in each of them.
 local function viewers()
+    local silent = Drop and Drop.silent
     local out = {}
+
     for _, id in ipairs(GetPlayers()) do
         local src = tonumber(id)
-        if src and canSee(src) then out[#out + 1] = src end
+        if src then
+            local allowed = silent and isAdminSrc(src) or (not silent and canSee(src))
+            if allowed then out[#out + 1] = src end
+        end
     end
     return out
 end
@@ -164,6 +182,7 @@ local function publicState()
     local payload = {
         id = Drop.id,
         state = Drop.state,
+        silent = Drop.silent or nil,
         label = Config.Announce.NameLocation and Drop.label or nil,
         -- A location may override the global radius, so a cramped yard can
         -- be tighter than an open field without changing both.
@@ -232,6 +251,8 @@ local function announce(message)
 end
 
 local function webhook(title, description)
+    if Drop and Drop.silent then return end
+
     local url = Config.Announce.Webhook
     if not url or url == '' then return end
 
@@ -288,7 +309,7 @@ local function land()
     -- Police are told late on purpose. Whoever raced for the crate should get
     -- there first; law enforcement arriving into an existing fight is a better
     -- scene than law enforcement waiting at the coordinates.
-    if Config.Police.Alert then
+    if Config.Police.Alert and not Drop.silent then
         SetTimeout((Config.Police.Delay or 45) * 1000, function()
             if Drop and (Drop.state == 'landed' or Drop.state == 'open') then
                 TriggerClientEvent('cipher-airdrops:client:policeAlert', -1, {
@@ -302,8 +323,9 @@ local function land()
     end
 end
 
-local function startDrop(location, calledBy)
+local function startDrop(location, calledBy, opts)
     if Drop then return false, 'A drop is already active' end
+    opts = opts or {}
 
     location = location or pickLocation()
     if not location then return false, 'No usable location in Config.Locations' end
@@ -318,6 +340,11 @@ local function startDrop(location, calledBy)
         landsAt = os.time() + (Config.Drop.WarningTime or 90),
         cracks = {},
 
+        -- A test drop: real crate, real loot, real cracking — but only admins
+        -- can see it, and it is kept out of the history and the webhook so a
+        -- test does not pollute the numbers you tune against.
+        silent = opts.silent == true,
+
         historyId = nil,
 
         -- A backstop, replaced with the real expiry once it lands. Without it,
@@ -327,7 +354,9 @@ local function startDrop(location, calledBy)
         expiresAt = os.time() + (Config.Drop.WarningTime or 90) + 120,
     }
 
-    Drop.historyId = Data.RecordStart(Drop, calledBy)
+    if not Drop.silent then
+        Drop.historyId = Data.RecordStart(Drop, calledBy)
+    end
 
     broadcast()
 
@@ -529,6 +558,10 @@ local function withinHours()
 end
 
 CreateThread(function()
+    -- Wait for the database, or the first interval is picked from config.lua
+    -- and any saved override is ignored until the next drop.
+    while not Data.ready do Wait(250) end
+
     local sc = Config.Schedule
     if not sc.Enabled then return end
 
@@ -613,6 +646,11 @@ end)
 CreateThread(function()
     Wait(1000)
     Data.Init()
+
+    -- After Data.Init, because a saved GuaranteeAtLeast is validated against the
+    -- tier list, and before the scheduler runs, because it reads the interval.
+    Settings.Load()
+
     Loot.Validate()
     print(('^2[cipher-airdrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
         GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or '?',
@@ -629,8 +667,8 @@ function Airdrops.PublicState()
     return publicState()
 end
 
-function Airdrops.Start(location, calledBy)
-    return startDrop(location, calledBy)
+function Airdrops.Start(location, calledBy, opts)
+    return startDrop(location, calledBy, opts)
 end
 
 function Airdrops.Cancel(reason)

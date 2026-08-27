@@ -42,6 +42,7 @@ async function renderLive() {
                         <div class="card-title">
                             ${esc(drop.label || 'Unnamed location')}
                             <span class="badge ${look.tag}" style="margin-left:8px;">${esc(look.label)}</span>
+                            ${drop.silent ? '<span class="badge badge-muted" style="margin-left:6px;">Silent test</span>' : ''}
                         </div>
                         <div class="text-muted text-sm">${esc(look.note)}</div>
                     </div>
@@ -153,11 +154,26 @@ async function openStartDropModal() {
                 ${usable.map(l => `<option value="${esc(l.id)}">${esc(l.label)}</option>`).join('')}
             </select>
             <div class="form-hint">Leaving this on "pick by weight" is what the scheduler does, and it will not repeat the last location.</div>
+        </div>
+
+        <label class="checkbox">
+            <input type="checkbox" id="drop-silent">
+            <span>Silent test — only admins see it</span>
+        </label>
+        <div class="form-hint" style="margin-top:6px;">
+            A real crate with real loot, but no announcement, no blip for players,
+            no police call, and it is left out of the history so a test does not
+            skew the numbers you tune against.
         </div>`,
         async () => {
             const id = val('drop-location');
-            const res = await nui('startDrop', { locationId: id ? parseInt(id, 10) : null });
-            if (!reportResult(res, 'Drop called', 'Players have been told.')) return false;
+            const res = await nui('startDrop', {
+                locationId: id ? parseInt(id, 10) : null,
+                silent: checked('drop-silent'),
+            });
+            const silent = checked('drop-silent');
+            if (!reportResult(res, silent ? 'Test drop called' : 'Drop called',
+                    silent ? 'Only admins can see it.' : 'Players have been told.')) return false;
             renderLive();
         }, 'Call the drop');
 }

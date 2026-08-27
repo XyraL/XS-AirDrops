@@ -47,6 +47,10 @@ anywhere else on your map.
    lootable by anyone who reaches it. Not just whoever cracked it.
 6. **Gone.** The crate despawns once it is emptied, or after five minutes.
 
+Each of those steps has an audio cue, using native GTA sounds so there are no
+files to stream. The last ten seconds of the warning window tick audibly — that
+one is separately switchable, because it is the cue people tire of first.
+
 Police are alerted **45 seconds after landing**, not immediately. Whoever raced
 for the crate should get there first; law enforcement arriving into an existing
 fight is a better scene than law enforcement waiting at the coordinates.
@@ -108,6 +112,7 @@ Everything lives in `config.lua`.
 | `Config.Blip` | Pin and zone colours; the live zone is red, the search area yellow |
 | `Config.Police` | Whether police are alerted, and how long after landing |
 | `Config.Announce` | Server messages, whether to name the area, Discord webhook |
+| `Config.Sounds` | Audio cues, and the countdown ticks separately |
 
 ### Loot tiers
 
@@ -178,9 +183,24 @@ their screen.
 - **History** — every drop, what was in it, and who cracked it. The number that
   matters is the abandon rate: if more than half are going untouched, they are
   landing where nobody goes or the loot is not worth the trip.
+- **Settings** — the numbers worth nudging while a drop is playing out: warning
+  window, crack time, zone radius, schedule interval, loot stack counts. Saved to
+  the database and applied immediately, **no restart**. Each field saves on its
+  own, and anything you have not touched still follows config.lua — *Reset* puts
+  a setting back to the file value rather than to a copy taken months ago.
 
 Deleting the last remaining location is refused — an empty table makes drops
 silently stop happening, which reads as a bug rather than a choice.
+
+### Silent test drops
+
+The start dialog has a **Silent test** option. It runs a real drop — real crate,
+real loot, real cracking — but only admins can see it: no announcement, no blip
+for players, no police call, and it is kept out of the history so testing a new
+location does not skew the numbers you tune against.
+
+It is the other half of the *use my current position* workflow: capture a spot,
+test it without telling the server, keep it or bin it.
 
 ---
 

@@ -69,3 +69,16 @@ CREATE TABLE IF NOT EXISTS `cipher_airdrop_history` (
     `ended_at` TIMESTAMP NULL DEFAULT NULL,
     KEY `idx_started` (`started_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Runtime settings changed from the admin panel.
+--
+-- Only holds the ones actually changed: a key missing here means "whatever
+-- config.lua says". That way editing config.lua still works for anything you
+-- have never touched in the panel, and a setting you reset genuinely goes back
+-- to the file's value rather than to a copy of it taken months ago.
+CREATE TABLE IF NOT EXISTS `cipher_airdrop_settings` (
+    `key` VARCHAR(64) PRIMARY KEY,
+    `value` TEXT NOT NULL,
+    `changed_by` VARCHAR(100) DEFAULT NULL,
+    `changed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
