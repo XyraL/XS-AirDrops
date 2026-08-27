@@ -1,0 +1,489 @@
+-- Airdrop state.
+--
+-- The server owns everything that matters: where the crate is, when it landed,
+-- who cracked it and what is inside. Clients are told the coordinates and draw
+-- the crate themselves.
+--
+-- That last part is deliberate and worth stating plainly, because the obvious
+-- alternative is worse. The crate is NOT a networked entity. Under OneSync,
+-- ownership of a networked entity follows whichever client has it in scope, not
+-- whoever created it — so a crate spawned server-side ends up owned by the
+-- first player who wanders near it, and a crate spawned client-side is owned by
+-- someone who can then delete it. Since the crate never needs to move, sync or
+-- take damage, it is a local prop on every client and the truth lives here as a
+-- coordinate. Nothing to steal, nothing to clean up after a restart.
+
+local Drop = nil
+local lastLocationIndex = nil
+local nextDropAt = 0
+
+local function log(fmt, ...)
+    if Config.Debug then
+        print(('^2[cipher-airdrops]^0 ' .. fmt):format(...))
+    end
+end
+
+local function playerCount()
+    return #GetPlayers()
+end
+
+-- ── Location choice ──────────────────────────────────────────────────────────
+
+local function pickLocation(forcedLabel)
+    local locations = Config.Locations or {}
+    if #locations == 0 then return nil end
+
+    if forcedLabel then
+        for i, loc in ipairs(locations) do
+            if loc.label:lower():find(forcedLabel:lower(), 1, true) then
+                lastLocationIndex = i
+                return loc
+            end
+        end
+        return nil
+    end
+
+    -- Never the same place twice running, whatever the weights say. Repeats
+    -- are what make an event feel scripted.
+    local pool, sum = {}, 0
+    for i, loc in ipairs(locations) do
+        if i ~= lastLocationIndex or #locations == 1 then
+            pool[#pool + 1] = { index = i, loc = loc, weight = loc.weight or 1 }
+            sum = sum + (loc.weight or 1)
+        end
+    end
+
+    local roll, running = math.random() * sum, 0
+    for _, entry in ipairs(pool) do
+        running = running + entry.weight
+        if roll <= running then
+            lastLocationIndex = entry.index
+            return entry.loc
+        end
+    end
+
+    local fallback = pool[#pool]
+    if fallback then
+        lastLocationIndex = fallback.index
+        return fallback.loc
+    end
+    return nil
+end
+
+-- Somewhere within ApproxBlipRadius of the real spot, so the first blip points
+-- at the right area without giving away the exact coordinate.
+local function approximate(coords)
+    local r = Config.Drop.ApproxBlipRadius or 250.0
+    local angle = math.random() * math.pi * 2
+    local dist = math.sqrt(math.random()) * r
+    return vec3(coords.x + math.cos(angle) * dist, coords.y + math.sin(angle) * dist, coords.z)
+end
+
+-- ── Broadcasting ─────────────────────────────────────────────────────────────
+
+-- What a client is allowed to know, by state. The exact coordinate is withheld
+-- until the crate is actually on the ground.
+local function publicState()
+    if not Drop then return nil end
+
+    local payload = {
+        id = Drop.id,
+        state = Drop.state,
+        label = Config.Announce.NameLocation and Drop.label or nil,
+        zoneRadius = Config.Drop.ZoneRadius,
+        landsAt = Drop.landsAt,
+        expiresAt = Drop.expiresAt,
+    }
+
+    if Drop.state == 'announced' or Drop.state == 'inbound' then
+        payload.coords = Drop.approxCoords
+        payload.approx = true
+        payload.approxRadius = Config.Drop.ApproxBlipRadius
+    else
+        payload.coords = Drop.coords
+        payload.approx = false
+        payload.crackedBy = Drop.crackedByName
+    end
+
+    return payload
+end
+
+local function broadcast()
+    TriggerClientEvent('cipher-airdrops:client:sync', -1, publicState())
+end
+
+local function announce(message)
+    if not Config.Announce.ToEveryone then return end
+    TriggerClientEvent('cipher-airdrops:client:announce', -1, message)
+end
+
+local function webhook(title, description)
+    local url = Config.Announce.Webhook
+    if not url or url == '' then return end
+
+    PerformHttpRequest(url, function() end, 'POST', json.encode({
+        embeds = { {
+            title = title,
+            description = description,
+            color = 5814783,
+            footer = { text = 'cipher-airdrops' },
+        } },
+    }), { ['Content-Type'] = 'application/json' })
+end
+
+-- ── Lifecycle ────────────────────────────────────────────────────────────────
+
+local function endDrop(reason)
+    if not Drop then return end
+    log('drop %s ended (%s)', Drop.id, reason)
+
+    -- Whatever is still in the crate goes with it. The alternative is a stash
+    -- per drop left in the database forever, still holding the loot nobody
+    -- collected — and a despawning crate should take its contents with it
+    -- anyway.
+    if Drop.stashId then
+        Inv.ClearStash(Drop.stashId)
+    end
+
+    TriggerClientEvent('cipher-airdrops:client:sync', -1, nil)
+    Drop = nil
+
+    -- Schedule the next one from the moment this finished, not from when it
+    -- started, so a long contested drop does not immediately trigger another.
+    local sc = Config.Schedule
+    if sc.Enabled then
+        nextDropAt = os.time() + math.random(sc.MinInterval or 45, sc.MaxInterval or 90) * 60
+    end
+end
+
+local function land()
+    if not Drop or Drop.state ~= 'inbound' then return end
+
+    Drop.state = 'landed'
+    Drop.landedAt = os.time()
+    Drop.expiresAt = os.time() + (Config.Drop.AbandonedAfter or 900)
+
+    broadcast()
+    announce(('The crate has landed%s.'):format(
+        Config.Announce.NameLocation and (' near ' .. Drop.label) or ''))
+
+    log('drop %s landed at %s', Drop.id, Drop.label)
+
+    -- Police are told late on purpose. Whoever raced for the crate should get
+    -- there first; law enforcement arriving into an existing fight is a better
+    -- scene than law enforcement waiting at the coordinates.
+    if Config.Police.Alert then
+        SetTimeout((Config.Police.Delay or 45) * 1000, function()
+            if Drop and (Drop.state == 'landed' or Drop.state == 'open') then
+                TriggerClientEvent('cipher-airdrops:client:policeAlert', -1, {
+                    coords = Drop.coords,
+                    code = Config.Police.Code,
+                    title = Config.Police.Title,
+                    jobs = Config.Police.Jobs,
+                })
+            end
+        end)
+    end
+end
+
+local function startDrop(location, calledBy)
+    if Drop then return false, 'A drop is already active' end
+
+    location = location or pickLocation()
+    if not location then return false, 'No usable location in Config.Locations' end
+
+    Drop = {
+        id = ('%d-%d'):format(os.time(), math.random(1000, 9999)),
+        label = location.label,
+        coords = location.coords,
+        approxCoords = approximate(location.coords),
+        state = 'announced',
+        landsAt = os.time() + (Config.Drop.WarningTime or 90),
+        cracks = {},
+
+        -- A backstop, replaced with the real expiry once it lands. Without it,
+        -- a drop that somehow never lands stays active forever and blocks
+        -- every future drop, since only one runs at a time. Cheap insurance
+        -- against a timer that did not fire.
+        expiresAt = os.time() + (Config.Drop.WarningTime or 90) + 120,
+    }
+
+    broadcast()
+
+    announce(('Supply drop inbound%s — %d seconds out.'):format(
+        Config.Announce.NameLocation and (', ' .. Drop.label) or '',
+        Config.Drop.WarningTime or 90))
+
+    webhook('Supply drop inbound', ('**%s**%s'):format(
+        Drop.label, calledBy and ('\nCalled by ' .. calledBy) or ''))
+
+    log('drop %s announced for %s%s', Drop.id, Drop.label, calledBy and (' by ' .. calledBy) or '')
+
+    SetTimeout((Config.Drop.WarningTime or 90) * 1000, function()
+        if not Drop or Drop.state ~= 'announced' then return end
+        Drop.state = 'inbound'
+        broadcast()
+
+        -- The flyover is cosmetic and runs on each client. The crate becomes
+        -- real here regardless, so a client that cannot render the plane is
+        -- not left out of the event.
+        SetTimeout(Config.Delivery.Flyover and 12000 or 500, land)
+    end)
+
+    return true
+end
+
+-- ── Cracking ─────────────────────────────────────────────────────────────────
+-- Anyone may start. First to finish opens it, and the server checks both ends:
+-- you must have been near the crate when you started, still be near it when you
+-- claim to have finished, and enough time must actually have passed.
+
+local function nearCrate(src)
+    if not Drop then return false end
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then return false end
+
+    local pos = GetEntityCoords(ped)
+    return #(pos - Drop.coords) <= (Config.Drop.CrackDistance or 3.0) + 2.0
+end
+
+RegisterNetEvent('cipher-airdrops:server:beginCrack', function()
+    local src = source
+    if not Drop or Drop.state ~= 'landed' then return end
+    if not nearCrate(src) then return end
+
+    Drop.cracks[src] = os.time()
+    log('%s started cracking %s', GetPlayerName(src), Drop.id)
+end)
+
+RegisterNetEvent('cipher-airdrops:server:finishCrack', function()
+    local src = source
+    if not Drop or Drop.state ~= 'landed' then return end
+
+    local startedAt = Drop.cracks[src]
+    if not startedAt then return end
+
+    -- A second of grace for latency, and no more. Without this check a client
+    -- can simply send finishCrack immediately after beginCrack.
+    local elapsed = os.time() - startedAt
+    if elapsed < (Config.Drop.CrackTime or 25) - 1 then
+        log('%s finished too fast (%ds) — ignored', GetPlayerName(src), elapsed)
+        return
+    end
+
+    if not nearCrate(src) then return end
+
+    Drop.state = 'open'
+    Drop.crackedBy = src
+    Drop.crackedByName = GetPlayerName(src)
+    Drop.expiresAt = os.time() + (Config.Drop.OpenDuration or 300)
+    Drop.stashId = 'airdrop_' .. Drop.id
+
+    local rolled = Loot.Roll()
+    Inv.RegisterStash(Drop.stashId, 'Supply Crate', Config.Loot.Slots, Config.Loot.MaxWeight)
+
+    if Inv.CanPrefillStash() then
+        for _, entry in ipairs(rolled) do
+            Inv.AddToStash(Drop.stashId, entry.item, entry.count)
+        end
+        Drop.loot = nil
+    else
+        -- Backends that build a stash lazily get their contents when the first
+        -- player opens it. Held here rather than dropped on the floor.
+        Drop.loot = rolled
+    end
+
+    broadcast()
+    announce(('%s has opened the crate.'):format(Drop.crackedByName))
+    webhook('Crate opened', ('**%s** opened the crate at **%s**'):format(Drop.crackedByName, Drop.label))
+
+    log('drop %s cracked by %s, %d stacks', Drop.id, Drop.crackedByName, #rolled)
+end)
+
+-- Looting is a separate check from cracking: the crate stays open to everyone
+-- once cracked, so proximity is verified again here.
+--
+-- Two paths, because the inventories genuinely differ.
+--
+-- ox_inventory can be handed a filled container, so the crate is a real shared
+-- stash: several people rummage in the same box and the inventory sorts out who
+-- grabbed what. That is the version this script is designed around.
+--
+-- The other five backends only create a stash when a player opens one, and none
+-- expose a reliable way to put items into a stash nobody has opened yet. Rather
+-- than ship them an empty crate, the loot is handed out a few stacks at a time
+-- to whoever is searching. It keeps the scramble — being first still matters,
+-- and being second still gets you something.
+RegisterNetEvent('cipher-airdrops:server:loot', function()
+    local src = source
+    if not Drop or Drop.state ~= 'open' then return end
+    if not nearCrate(src) then return end
+
+    if Inv.CanPrefillStash() then
+        TriggerClientEvent('cipher-airdrops:client:openStash', src, Drop.stashId, {
+            slots = Config.Loot.Slots,
+            maxWeight = Config.Loot.MaxWeight,
+        })
+        return
+    end
+
+    if not Drop.loot or #Drop.loot == 0 then
+        Framework.Notify(src, 'The crate is empty.', 'error')
+        return
+    end
+
+    local take = Config.Loot.StacksPerSearch or 2
+    local given = 0
+
+    for _ = 1, take do
+        local entry = table.remove(Drop.loot, 1)
+        if not entry then break end
+
+        if Inv.CanCarry(src, entry.item, entry.count) and Inv.AddItem(src, entry.item, entry.count) then
+            given = given + 1
+        else
+            -- Put it back at the front. A full player must not delete loot for
+            -- everyone else by walking up to the crate.
+            table.insert(Drop.loot, 1, entry)
+            Framework.Notify(src, 'You cannot carry any more.', 'error')
+            break
+        end
+    end
+
+    if given > 0 then
+        Framework.Notify(src, ('You pull %d item stack%s from the crate.'):format(
+            given, given == 1 and '' or 's'), 'success')
+    end
+
+    if #Drop.loot == 0 then
+        announce('The crate has been emptied.')
+        endDrop('emptied')
+    end
+end)
+
+-- qb-inventory and ps-inventory open stashes from the server.
+RegisterNetEvent('cipher-airdrops:server:openStash', function(id)
+    local src = source
+    if not Drop or Drop.stashId ~= id or Drop.state ~= 'open' then return end
+    if not nearCrate(src) then return end
+
+    if Inv.name == 'qb-inventory' then
+        exports['qb-inventory']:OpenInventory(src, id, {
+            label = 'Supply Crate',
+            maxweight = Config.Loot.MaxWeight,
+            slots = Config.Loot.Slots,
+        })
+    elseif Inv.name == 'ps-inventory' then
+        TriggerClientEvent('ps-inventory:client:openStash', src, id)
+    end
+end)
+
+-- ── Scheduling ───────────────────────────────────────────────────────────────
+
+-- Server local time, not in-game time. A server owner setting an hour window
+-- means "when my players are awake", which is a wall-clock question.
+local function withinHours()
+    local h = Config.Schedule.Hours
+    if not h or not h.from or not h.to then return true end
+
+    local hour = tonumber(os.date('%H'))
+    if h.from <= h.to then
+        return hour >= h.from and hour < h.to
+    end
+    -- Window crossing midnight, e.g. 18 → 4.
+    return hour >= h.from or hour < h.to
+end
+
+CreateThread(function()
+    local sc = Config.Schedule
+    if not sc.Enabled then return end
+
+    nextDropAt = os.time() + math.random(sc.MinInterval or 45, sc.MaxInterval or 90) * 60
+
+    while true do
+        Wait(30000)
+
+        if not Drop and os.time() >= nextDropAt then
+            if playerCount() < (sc.MinPlayers or 1) then
+                -- Try again shortly rather than skipping the slot entirely,
+                -- or a server that fills up late never gets a drop at all.
+                nextDropAt = os.time() + 300
+                log('too few players (%d/%d), retrying in 5m', playerCount(), sc.MinPlayers)
+            elseif not withinHours() then
+                nextDropAt = os.time() + 600
+            else
+                startDrop()
+            end
+        end
+    end
+end)
+
+-- ── Admin command ────────────────────────────────────────────────────────────
+
+if Config.AdminCommand.Enabled then
+    RegisterCommand(Config.AdminCommand.Command, function(src, args)
+        -- Console always allowed.
+        if src > 0 then
+            local allowed = Framework.IsAdmin(src)
+            for _, ace in ipairs(Config.AdminCommand.Aces or {}) do
+                if IsPlayerAceAllowed(src, ace) then allowed = true break end
+            end
+            if not allowed then
+                Framework.Notify(src, 'You do not have permission to call a drop.', 'error')
+                return
+            end
+        end
+
+        local wanted = args[1] and table.concat(args, ' ') or nil
+        local location = wanted and pickLocation(wanted) or nil
+
+        if wanted and not location then
+            local msg = ('No location matching "%s".'):format(wanted)
+            if src > 0 then Framework.Notify(src, msg, 'error') else print(msg) end
+            return
+        end
+
+        local ok, err = startDrop(location, src > 0 and GetPlayerName(src) or 'Console')
+        if not ok then
+            if src > 0 then Framework.Notify(src, err, 'error') else print(err) end
+        end
+    end, false)
+end
+
+-- ── Housekeeping ─────────────────────────────────────────────────────────────
+
+CreateThread(function()
+    while true do
+        Wait(5000)
+        if Drop and Drop.expiresAt and os.time() >= Drop.expiresAt then
+            endDrop(Drop.state == 'open' and 'looted out' or 'abandoned')
+        end
+    end
+end)
+
+-- A player who joins mid-event should see it.
+RegisterNetEvent('cipher-airdrops:server:requestSync', function()
+    TriggerClientEvent('cipher-airdrops:client:sync', source, publicState())
+end)
+
+AddEventHandler('playerDropped', function()
+    if Drop and Drop.cracks then Drop.cracks[source] = nil end
+end)
+
+AddEventHandler('onResourceStop', function(resource)
+    if resource == GetCurrentResourceName() and Drop then
+        TriggerClientEvent('cipher-airdrops:client:sync', -1, nil)
+    end
+end)
+
+CreateThread(function()
+    Wait(1000)
+    Loot.Validate()
+    print(('^2[cipher-airdrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
+        GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or '?',
+        Framework.name or 'NONE', Inv.name or 'NONE', #(Config.Locations or {})))
+end)
+
+exports('IsDropActive', function() return Drop ~= nil end)
+exports('GetDrop', function() return Drop and publicState() or nil end)
+exports('StartDrop', function(label) return startDrop(label and pickLocation(label) or nil, 'Export') end)
