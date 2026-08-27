@@ -54,6 +54,23 @@ if IS_SERVER then
         }
     end
 
+    -- Gangs, for access rules that key on them. Both frameworks keep gang
+    -- alongside job in PlayerData; a character with no gang returns nil rather
+    -- than the "none" placeholder QBCore uses, so callers can test it plainly.
+    function Framework.GetGang(src)
+        local player = Framework.GetPlayer(src)
+        if not player then return nil end
+
+        local g = player.PlayerData.gang
+        if not g or not g.name or g.name == 'none' or g.name == '' then return nil end
+
+        return {
+            name  = g.name,
+            grade = (type(g.grade) == 'table') and g.grade.level or g.grade,
+            label = g.label,
+        }
+    end
+
     -- Online src for a citizenid, or nil.
     function Framework.GetPlayerByCitizenId(citizenid)
         if Framework.name == 'qbox' then

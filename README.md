@@ -4,7 +4,8 @@ Contested supply drops for FiveM. A crate is announced, flown in by cargo plane,
 parachuted onto the map and cracked open by whoever gets there and holds the
 ground long enough.
 
-Standalone for **QBox** and **QBCore**. No database.
+Standalone for **QBox** and **QBCore**, with an in-game admin panel for
+building drop locations and loot tables.
 
 ---
 
@@ -29,12 +30,16 @@ anywhere else on your map.
 
 1. **Announced.** Everyone is told a drop is inbound, and roughly where. A
    flashing blip shows the *approximate* area — a 250m circle, not the exact
-   spot. The warning window is the interesting part: it is when people decide
-   whether to go, gear up, and travel.
+   spot — and an **on-screen countdown** runs until it lands, turning red in the
+   last fifteen seconds. The warning window is the interesting part: it is when
+   people decide whether to go, gear up, and travel, and a number they can
+   glance at while driving is what makes that a decision rather than a guess.
 2. **Inbound.** A cargo plane flies over on a random bearing and releases the
    crate under a chute.
-3. **Landed.** The exact position appears, with smoke and a flare. The contested
-   radius is drawn on the map.
+3. **Landed.** The exact position appears, with smoke and a flare, and the
+   contested radius is drawn on the map as a **red circle** — the yellow search
+   area becomes a red zone, so the two states are never mistaken for each other
+   at a glance.
 4. **Cracking.** Standing at the crate for 25 seconds opens it. You cannot move,
    drive or fight while doing it — that exposure is what makes the crate worth
    contesting rather than just racing to.
@@ -51,17 +56,23 @@ fight is a better scene than law enforcement waiting at the coordinates.
 ## Installation
 
 1. Drop `cipher-airdrops` in your resources folder.
-2. `ensure cipher-airdrops` in your `server.cfg`, after your framework and
+2. Run `sql/airdrops.sql` against your database. It creates four tables and is
+   safe to re-run.
+3. `ensure cipher-airdrops` in your `server.cfg`, after your framework and
    inventory.
-3. Open `config.lua` and set your drop locations. The ten shipped ones are real
-   coordinates and work as-is.
 
-**There is no SQL.** A drop lives and dies inside one server session, so there
-is nothing to import and nothing to migrate on upgrade.
+The ten drop locations and four loot tiers in `config.lua` are copied into those
+tables the first time the resource starts, so a fresh install behaves exactly as
+the config file reads.
+
+**After that the database owns them and the admin panel edits them.** Editing
+`config.lua` later does nothing, which is deliberate — two places claiming to
+own the same setting is how they quietly drift apart.
 
 ### Requirements
 
 - `ox_lib`
+- `oxmysql`
 - A framework: **qbx_core** or **qb-core** (auto-detected)
 - An inventory: **ox_inventory**, qb-inventory, qs-inventory, codem-inventory,
   core_inventory or ps-inventory (auto-detected)
@@ -91,8 +102,10 @@ Everything lives in `config.lua`.
 | `Config.Schedule` | Interval between drops, minimum players, optional hour window |
 | `Config.Drop` | Warning time, crack time, zone radius, how long a crate lasts |
 | `Config.Delivery` | Plane model, crate model, altitude — or turn the flyover off |
-| `Config.Locations` | Where drops can land, with weights |
-| `Config.Loot` | Tiers, item ranges, stack counts, guaranteed minimum tier |
+| `Config.Locations` | Seed locations only — the panel owns these after first start |
+| `Config.Loot` | Stack counts and the guaranteed minimum tier. Tiers and items live in the panel |
+| `Config.Access` | Who sees drops, who can collect, and the police exception |
+| `Config.Blip` | Pin and zone colours; the live zone is red, the search area yellow |
 | `Config.Police` | Whether police are alerted, and how long after landing |
 | `Config.Announce` | Server messages, whether to name the area, Discord webhook |
 
@@ -115,6 +128,59 @@ Pick open ground with **more than one approach**. A spot with a single road in
 belongs to whoever parks on it, and that is not a contest.
 
 The same location is never chosen twice in a row, whatever the weights say.
+
+---
+
+## Who can see and collect
+
+Two separate questions, because they usually have different answers.
+`Config.Access` answers both, and both are enforced **server-side** — a blip
+filtered out on the client would stop nobody.
+
+| | What it controls |
+| --- | --- |
+| `Access.See` | Who is told a drop is happening and gets the blip |
+| `Access.Collect` | Who can crack the crate and take from it |
+| `Access.Police` | Overrides both, for police jobs specifically |
+
+The default is everyone sees it and everyone can take it. Both blocks accept
+job and gang lists when `Everyone = false`.
+
+**Police are called out separately because they are the usual exception.**
+Setting `Police.CanSee = true` and `Police.CanCollect = false` is what turns a
+drop into a three-way scene: criminals fight over it, police turn up to stop
+them, and nobody in uniform is there to loot. Someone refused gets told why
+rather than watching the prompt do nothing.
+
+A player who changes job mid-event loses the blip rather than keeping a stale
+one, because every state change is re-filtered.
+
+---
+
+## The admin panel
+
+```
+/airdrops
+```
+
+Four tabs, gated by the same permission as the command — and re-checked on every
+single callback, since anyone can send one whether or not a panel exists on
+their screen.
+
+- **Live Drop** — what is running right now, with a countdown. Start one on a
+  chosen location or by weight, or cancel the one in progress.
+- **Locations** — add, edit, enable and delete. **Use my current position**
+  captures where you are standing, which is the point of doing this in game
+  rather than in a config file. *Go to* teleports you to a location to check it.
+- **Loot Tables** — tiers and items, with the **resolved percentages worked out
+  for you**. "Weight 28" means nothing on its own; "28% of rolls" is the actual
+  question you were asking.
+- **History** — every drop, what was in it, and who cracked it. The number that
+  matters is the abandon rate: if more than half are going untouched, they are
+  landing where nobody goes or the loot is not worth the trip.
+
+Deleting the last remaining location is refused — an empty table makes drops
+silently stop happening, which reads as a bug rather than a choice.
 
 ---
 

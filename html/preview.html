@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cipher-Airdrops — PREVIEW HARNESS</title>
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!--
+  DEV-ONLY. Not listed in fxmanifest.lua's files{} block, so FiveM never serves
+  it. It stubs the NUI bridge with sample data so the real css/js can be looked
+  at in an ordinary browser, without a server running and without guessing at
+  what the panel looks like.
+-->
+
+<div id="admin-overlay" class="hidden">
+<div id="admin-wrapper">
+    <nav id="admin-sidebar">
+        <div id="sidebar-logo">
+            <div class="logo-mark">&#x2B21;</div>
+            <div class="logo-text">CIPHER<span>DROPS</span></div>
+        </div>
+        <div id="sidebar-admin-badge"></div>
+        <ul id="admin-nav">
+            <li class="nav-item active" data-panel="live"><span class="nav-icon">&#9679;</span><span class="nav-label">Live Drop</span><span class="nav-badge" id="badge-live"></span></li>
+            <li class="nav-divider"></li>
+            <li class="nav-item" data-panel="locations"><span class="nav-icon">&#9679;</span><span class="nav-label">Locations</span><span class="nav-badge" id="badge-locations"></span></li>
+            <li class="nav-item" data-panel="loot"><span class="nav-icon">&#9679;</span><span class="nav-label">Loot Tables</span><span class="nav-badge" id="badge-loot"></span></li>
+            <li class="nav-divider"></li>
+            <li class="nav-item" data-panel="history"><span class="nav-icon">&#9679;</span><span class="nav-label">History</span></li>
+        </ul>
+        <div id="sidebar-footer">
+            <button class="btn btn-ghost btn-sm" id="btn-close">Close</button>
+        </div>
+    </nav>
+
+    <main id="admin-content">
+        <div class="panel" id="panel-live"></div>
+        <div class="panel hidden" id="panel-locations"></div>
+        <div class="panel hidden" id="panel-loot"></div>
+        <div class="panel hidden" id="panel-history"></div>
+    </main>
+</div>
+</div>
+
+<div id="toast-container"></div>
+<div id="modal-root"></div>
+
+<script>
+// ── NUI stub ────────────────────────────────────────────────────────────────
+// Sample data shaped exactly like the real server callbacks return, so the
+// panels below are exercising their real rendering rather than a special case.
+const MOCK = {
+    getLive: {
+        drop: {
+            id: 'demo', state: 'landed', label: 'Sandy Shores Airfield',
+            zoneRadius: 140, landsIn: 0, expiresIn: 245, crackedBy: null,
+        },
+        players: 24, minPlayers: 8, scheduleEnabled: true, nextIn: 1680,
+    },
+    getLocations: {
+        rows: [
+            { id: 1, label: 'Sandy Shores Airfield', x: 1747, y: 3286, z: 41, weight: 10, radius: null, enabled: true },
+            { id: 2, label: 'Grapeseed Fields', x: 2263, y: 4780, z: 35, weight: 10, radius: 160, enabled: true },
+            { id: 3, label: 'Elysian Docks', x: 150, y: -3000, z: 6, weight: 8, radius: null, enabled: true },
+            { id: 4, label: 'Mount Gordo', x: 2880, y: 5900, z: 370, weight: 4, radius: null, enabled: false },
+        ],
+    },
+    getLoot: {
+        tiers: [
+            { id: 1, name: 'common', weight: 60, colour: '#9aa0a8', rank: 1, enabled: true, items: [
+                { id: 1, tier_id: 1, item: 'bandage', min_count: 2, max_count: 5, weight: 10, enabled: true },
+                { id: 2, tier_id: 1, item: 'water_bottle', min_count: 2, max_count: 6, weight: 10, enabled: true },
+                { id: 3, tier_id: 1, item: 'metalscrap', min_count: 5, max_count: 15, weight: 8, enabled: true },
+            ]},
+            { id: 2, name: 'uncommon', weight: 28, colour: '#4c9aff', rank: 2, enabled: true, items: [
+                { id: 4, tier_id: 2, item: 'advancedlockpick', min_count: 1, max_count: 2, weight: 10, enabled: true },
+                { id: 5, tier_id: 2, item: 'firstaid', min_count: 1, max_count: 2, weight: 6, enabled: true },
+            ]},
+            { id: 3, name: 'rare', weight: 10, colour: '#c084fc', rank: 3, enabled: true, items: [
+                { id: 6, tier_id: 3, item: 'weapon_pistol', min_count: 1, max_count: 1, weight: 4, enabled: true },
+                { id: 7, tier_id: 3, item: 'thermite', min_count: 1, max_count: 1, weight: 3, enabled: false },
+            ]},
+            { id: 4, name: 'legendary', weight: 2, colour: '#f5a524', rank: 4, enabled: true, items: [
+                { id: 8, tier_id: 4, item: 'weapon_assaultrifle', min_count: 1, max_count: 1, weight: 1, enabled: true },
+            ]},
+        ],
+    },
+    getHistory: {
+        stats: { total: 41, cracked: 33, abandoned: 8 },
+        rows: [
+            { id: 1, label: 'Sandy Shores Airfield', called_by: 'scheduler', cracked_by_name: 'Marcus Reyes',
+              outcome: 'looted out', started_at: '2026-08-27 18:40:00', age_seconds: 5400,
+              contents: '[{"item":"weapon_pistol","count":1,"tier":"rare"},{"item":"bandage","count":4,"tier":"common"}]' },
+            { id: 2, label: 'Elysian Docks', called_by: 'XyraL', cracked_by_name: 'Dee Wallace',
+              outcome: 'emptied', started_at: '2026-08-27 17:05:00', age_seconds: 12600, contents: '[]' },
+            { id: 3, label: 'Mount Gordo', called_by: 'scheduler', cracked_by_name: null,
+              outcome: 'abandoned', started_at: '2026-08-27 15:20:00', age_seconds: 97200, contents: null },
+        ],
+    },
+    getPosition: { x: 1747.24, y: 3286.11, z: 41.08 },
+};
+
+window.fetch = (url, opts) => {
+    const endpoint = String(url).split('/').pop();
+    const body = MOCK[endpoint] !== undefined ? MOCK[endpoint] : { ok: true };
+    return Promise.resolve({ json: () => Promise.resolve(body) });
+};
+</script>
+
+<script src="js/core.js"></script>
+<script src="js/panels/live.js"></script>
+<script src="js/panels/locations.js"></script>
+<script src="js/panels/loot.js"></script>
+<script src="js/panels/history.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+// The real panel is opened by a NUI message from the client script.
+window.postMessage({ action: 'open', payload: { name: 'XyraL' } }, '*');
+</script>
+</body>
+</html>

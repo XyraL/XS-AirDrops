@@ -220,12 +220,21 @@ Config.Police = {
 -- ── Blips ────────────────────────────────────────────────────────────────────
 Config.Blip = {
     Sprite = 478,
-    Colour = 5,
+    Colour = 5,          -- the pin itself
     Scale  = 1.1,
 
-    -- Draws the contested radius on the map, not just a pin.
+    -- The contested area, drawn as a filled circle on the map rather than a
+    -- lone pin. Red because that is what every player already reads as
+    -- "something is happening here and it is not safe".
     ShowRadius = true,
-    RadiusAlpha = 80,
+    RadiusColour = 1,    -- 1 = red
+    RadiusAlpha = 90,
+
+    -- The search area during the inbound window, before the exact spot is
+    -- known. Deliberately a different colour from the live zone so the two
+    -- states are not mistaken for each other at a glance.
+    ApproxColour = 5,    -- 5 = yellow
+    ApproxAlpha = 60,
 }
 
 -- ── Admin ────────────────────────────────────────────────────────────────────
@@ -249,4 +258,47 @@ Config.NotifyStyle = {
     icon = 'parachute-box',
     position = 'top',
     duration = 7000,
+}
+
+-- ── Who gets to take part ────────────────────────────────────────────────────
+--
+-- Two separate questions, because they usually have different answers:
+--   See     — who is told a drop is happening, and gets the blip
+--   Collect — who can actually crack the crate and take from it
+--
+-- The common setup is "everyone sees it, everyone can take it". The second most
+-- common is "police see every drop but cannot loot it", which makes them
+-- responders rather than another gang — that is what Config.Access.Police is
+-- for, and it overrides the two blocks below for those jobs.
+Config.Access = {
+    See = {
+        Everyone = true,
+        -- Only consulted when Everyone = false.
+        Jobs  = {},          -- e.g. { 'police', 'ambulance' }
+        Gangs = {},          -- e.g. { 'ballas', 'families' }
+    },
+
+    Collect = {
+        Everyone = true,
+        Jobs  = {},
+        Gangs = {},
+    },
+
+    -- Police are called out separately because they are the usual exception.
+    Police = {
+        Jobs = { 'police', 'sheriff', 'sasp' },
+
+        -- Officers always get told, even when See.Everyone is false. Set this
+        -- to false and police find out the same way everyone else does.
+        CanSee = true,
+
+        -- Whether an officer can crack and loot a crate. Setting this false is
+        -- what turns a drop into a three-way scene: criminals fight for it,
+        -- police turn up to stop them, and nobody in uniform is there to loot.
+        CanCollect = true,
+    },
+
+    -- Shown to someone who tries to crack a crate they are not allowed to.
+    -- Saying nothing at all reads as the script being broken.
+    DeniedMessage = 'You have no idea how to open this.',
 }

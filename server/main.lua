@@ -17,6 +17,10 @@ local Drop = nil
 local lastLocationIndex = nil
 local nextDropAt = 0
 
+-- The surface server/admin.lua drives. Kept deliberately small: read the state,
+-- start one, stop one. Everything else about a drop is this file's business.
+Airdrops = {}
+
 local function log(fmt, ...)
     if Config.Debug then
         print(('^2[cipher-airdrops]^0 ' .. fmt):format(...))
@@ -27,17 +31,88 @@ local function playerCount()
     return #GetPlayers()
 end
 
+-- ── Access ───────────────────────────────────────────────────────────────────
+-- Two separate questions with usually different answers: who is told a drop is
+-- happening, and who may take from it. Both are answered here and enforced on
+-- the server — the panel filtering a blip out of view would stop nobody.
+
+local function inList(value, list)
+    if not value then return false end
+    for _, entry in ipairs(list or {}) do
+        if entry == value then return true end
+    end
+    return false
+end
+
+local function isPolice(src)
+    local job = Framework.GetJob(src)
+    return job and inList(job.name, Config.Access.Police.Jobs)
+end
+
+local function canSee(src)
+    if isPolice(src) and Config.Access.Police.CanSee then return true end
+
+    local rule = Config.Access.See
+    if rule.Everyone then return true end
+
+    local job = Framework.GetJob(src)
+    if job and inList(job.name, rule.Jobs) then return true end
+
+    local gang = Framework.GetGang(src)
+    return gang and inList(gang.name, rule.Gangs) or false
+end
+
+local function canCollect(src)
+    -- Police are checked first in both directions: an officer who may not loot
+    -- is refused even when Collect.Everyone is on, which is the whole point of
+    -- making them responders rather than another gang.
+    if isPolice(src) then return Config.Access.Police.CanCollect == true end
+
+    local rule = Config.Access.Collect
+    if rule.Everyone then return true end
+
+    local job = Framework.GetJob(src)
+    if job and inList(job.name, rule.Jobs) then return true end
+
+    local gang = Framework.GetGang(src)
+    return gang and inList(gang.name, rule.Gangs) or false
+end
+
+-- Everyone currently allowed to know about a drop.
+local function viewers()
+    local out = {}
+    for _, id in ipairs(GetPlayers()) do
+        local src = tonumber(id)
+        if src and canSee(src) then out[#out + 1] = src end
+    end
+    return out
+end
+
 -- ── Location choice ──────────────────────────────────────────────────────────
 
+-- Locations live in the database and are edited from the admin panel;
+-- config.lua only seeded them on first run. Rows carry x/y/z rather than a
+-- vec3, so they are normalised here once instead of at every call site.
+local function asLocation(row)
+    if not row then return nil end
+    return {
+        id = row.id,
+        label = row.label,
+        coords = vec3(row.x, row.y, row.z),
+        weight = row.weight,
+        radius = row.radius,
+    }
+end
+
 local function pickLocation(forcedLabel)
-    local locations = Config.Locations or {}
+    local locations = Data.Locations()
     if #locations == 0 then return nil end
 
     if forcedLabel then
         for i, loc in ipairs(locations) do
             if loc.label:lower():find(forcedLabel:lower(), 1, true) then
                 lastLocationIndex = i
-                return loc
+                return asLocation(loc)
             end
         end
         return nil
@@ -58,14 +133,14 @@ local function pickLocation(forcedLabel)
         running = running + entry.weight
         if roll <= running then
             lastLocationIndex = entry.index
-            return entry.loc
+            return asLocation(entry.loc)
         end
     end
 
     local fallback = pool[#pool]
     if fallback then
         lastLocationIndex = fallback.index
-        return fallback.loc
+        return asLocation(fallback.loc)
     end
     return nil
 end
@@ -90,9 +165,15 @@ local function publicState()
         id = Drop.id,
         state = Drop.state,
         label = Config.Announce.NameLocation and Drop.label or nil,
-        zoneRadius = Config.Drop.ZoneRadius,
-        landsAt = Drop.landsAt,
-        expiresAt = Drop.expiresAt,
+        -- A location may override the global radius, so a cramped yard can
+        -- be tighter than an open field without changing both.
+        zoneRadius = Drop.radius or Config.Drop.ZoneRadius,
+        -- Durations, not timestamps. The client would otherwise have to
+        -- compare os.time() here against GetCloudTimeAsInt() there, and those
+        -- only agree when the server clock happens to be UTC. Seconds-from-now
+        -- needs no clock agreement at all.
+        landsIn = Drop.landsAt and math.max(0, Drop.landsAt - os.time()) or nil,
+        expiresIn = Drop.expiresAt and math.max(0, Drop.expiresAt - os.time()) or nil,
     }
 
     if Drop.state == 'announced' or Drop.state == 'inbound' then
@@ -108,13 +189,46 @@ local function publicState()
     return payload
 end
 
+-- Sent only to players allowed to know. Anyone else is told the drop ended,
+-- so a player who changes job mid-event loses the blip rather than keeping a
+-- stale one forever.
+-- Nudges any open admin panel to re-read. Sent to everyone rather than
+-- tracking who has one open: the client ignores it unless a panel exists, and
+-- a list of open panels is state that goes stale the moment someone drops.
+--
+-- Defined above broadcast() deliberately — a Lua local referenced before its
+-- definition is simply nil at the call, which fails at runtime rather than at
+-- load.
+local function refreshPanels()
+    TriggerClientEvent('cipher-airdrops:client:refreshPanel', -1)
+end
+
 local function broadcast()
-    TriggerClientEvent('cipher-airdrops:client:sync', -1, publicState())
+    local state = publicState()
+    local allowed = {}
+
+    refreshPanels()
+
+    for _, src in ipairs(viewers()) do
+        allowed[src] = true
+        TriggerClientEvent('cipher-airdrops:client:sync', src, state)
+    end
+
+    if state then
+        for _, id in ipairs(GetPlayers()) do
+            local src = tonumber(id)
+            if src and not allowed[src] then
+                TriggerClientEvent('cipher-airdrops:client:sync', src, nil)
+            end
+        end
+    end
 end
 
 local function announce(message)
     if not Config.Announce.ToEveryone then return end
-    TriggerClientEvent('cipher-airdrops:client:announce', -1, message)
+    for _, src in ipairs(viewers()) do
+        TriggerClientEvent('cipher-airdrops:client:announce', src, message)
+    end
 end
 
 local function webhook(title, description)
@@ -144,6 +258,8 @@ local function endDrop(reason)
     if Drop.stashId then
         Inv.ClearStash(Drop.stashId)
     end
+
+    Data.RecordEnd(Drop.historyId, reason)
 
     TriggerClientEvent('cipher-airdrops:client:sync', -1, nil)
     Drop = nil
@@ -197,9 +313,12 @@ local function startDrop(location, calledBy)
         label = location.label,
         coords = location.coords,
         approxCoords = approximate(location.coords),
+        radius = location.radius,
         state = 'announced',
         landsAt = os.time() + (Config.Drop.WarningTime or 90),
         cracks = {},
+
+        historyId = nil,
 
         -- A backstop, replaced with the real expiry once it lands. Without it,
         -- a drop that somehow never lands stays active forever and blocks
@@ -207,6 +326,8 @@ local function startDrop(location, calledBy)
         -- against a timer that did not fire.
         expiresAt = os.time() + (Config.Drop.WarningTime or 90) + 120,
     }
+
+    Drop.historyId = Data.RecordStart(Drop, calledBy)
 
     broadcast()
 
@@ -252,6 +373,11 @@ RegisterNetEvent('cipher-airdrops:server:beginCrack', function()
     if not Drop or Drop.state ~= 'landed' then return end
     if not nearCrate(src) then return end
 
+    if not canCollect(src) then
+        Framework.Notify(src, Config.Access.DeniedMessage, 'error')
+        return
+    end
+
     Drop.cracks[src] = os.time()
     log('%s started cracking %s', GetPlayerName(src), Drop.id)
 end)
@@ -259,6 +385,7 @@ end)
 RegisterNetEvent('cipher-airdrops:server:finishCrack', function()
     local src = source
     if not Drop or Drop.state ~= 'landed' then return end
+    if not canCollect(src) then return end
 
     local startedAt = Drop.cracks[src]
     if not startedAt then return end
@@ -293,6 +420,8 @@ RegisterNetEvent('cipher-airdrops:server:finishCrack', function()
         Drop.loot = rolled
     end
 
+    Data.RecordCrack(Drop.historyId, Framework.GetCitizenId(src), Drop.crackedByName, rolled)
+
     broadcast()
     announce(('%s has opened the crate.'):format(Drop.crackedByName))
     webhook('Crate opened', ('**%s** opened the crate at **%s**'):format(Drop.crackedByName, Drop.label))
@@ -318,6 +447,11 @@ RegisterNetEvent('cipher-airdrops:server:loot', function()
     local src = source
     if not Drop or Drop.state ~= 'open' then return end
     if not nearCrate(src) then return end
+
+    if not canCollect(src) then
+        Framework.Notify(src, Config.Access.DeniedMessage, 'error')
+        return
+    end
 
     if Inv.CanPrefillStash() then
         TriggerClientEvent('cipher-airdrops:client:openStash', src, Drop.stashId, {
@@ -478,12 +612,37 @@ end)
 
 CreateThread(function()
     Wait(1000)
+    Data.Init()
     Loot.Validate()
     print(('^2[cipher-airdrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
         GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or '?',
-        Framework.name or 'NONE', Inv.name or 'NONE', #(Config.Locations or {})))
+        Framework.name or 'NONE', Inv.name or 'NONE', #Data.Locations()))
 end)
 
-exports('IsDropActive', function() return Drop ~= nil end)
+-- ── API for server/admin.lua and other resources ─────────────────────────────
+
+function Airdrops.Active()
+    return Drop ~= nil
+end
+
+function Airdrops.PublicState()
+    return publicState()
+end
+
+function Airdrops.Start(location, calledBy)
+    return startDrop(location, calledBy)
+end
+
+function Airdrops.Cancel(reason)
+    endDrop(reason or 'cancelled')
+end
+
+-- Seconds until the scheduler fires, or nil when it is switched off.
+function Airdrops.NextDropIn()
+    if not Config.Schedule.Enabled then return nil end
+    return math.max(0, nextDropAt - os.time())
+end
+
+exports('IsDropActive', Airdrops.Active)
 exports('GetDrop', function() return Drop and publicState() or nil end)
 exports('StartDrop', function(label) return startDrop(label and pickLocation(label) or nil, 'Export') end)

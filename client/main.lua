@@ -58,13 +58,17 @@ local function buildBlips(data)
         data.approx and 'Supply Drop (inbound)' or 'Supply Crate')
     EndTextCommandSetBlipName(Airdrop.blip)
 
-    -- The radius blip does double duty: while inbound it shows the search area,
-    -- and once landed it shows the contested ground people are fighting over.
+    -- The radius blip does double duty, and is coloured differently for each
+    -- job so the two are not confused at a glance: yellow while it is still a
+    -- search area, red once the crate is down and the ground is contested.
     if cfg.ShowRadius then
         local radius = data.approx and (data.approxRadius or 250.0) or (data.zoneRadius or 120.0)
+
         Airdrop.radiusBlip = AddBlipForRadius(c.x, c.y, c.z, radius + 0.0)
-        SetBlipColour(Airdrop.radiusBlip, cfg.Colour or 5)
-        SetBlipAlpha(Airdrop.radiusBlip, cfg.RadiusAlpha or 80)
+        SetBlipColour(Airdrop.radiusBlip,
+            data.approx and (cfg.ApproxColour or 5) or (cfg.RadiusColour or 1))
+        SetBlipAlpha(Airdrop.radiusBlip,
+            data.approx and (cfg.ApproxAlpha or 60) or (cfg.RadiusAlpha or 90))
     end
 end
 
@@ -76,6 +80,12 @@ RegisterNetEvent('cipher-airdrops:client:sync', function(data)
 
     local previous = Airdrop.data
     Airdrop.data = data
+
+    -- The server sends seconds-from-now; turn them into local deadlines on this
+    -- machine's own clock, which is the only clock the countdown can trust.
+    local now = GetGameTimer()
+    data.landsAtMs = data.landsIn and (now + data.landsIn * 1000) or nil
+    data.expiresAtMs = data.expiresIn and (now + data.expiresIn * 1000) or nil
 
     buildBlips(data)
 

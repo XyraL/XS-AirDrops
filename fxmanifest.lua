@@ -12,11 +12,9 @@ version '1.0.0'
 -- core_inventory / ps-inventory — bridge auto-detects, force via Config.Bridges.
 -- Dispatch: cipher-dispatch / ps-dispatch / qs-dispatch / cd_dispatch /
 -- core_dispatch, with a plain-notification fallback.
---
--- No database. Nothing here is persisted: a drop lives and dies inside one
--- server session, so there is no schema to import and nothing to migrate.
 dependencies {
     'ox_lib',
+    'oxmysql',
 }
 
 shared_scripts {
@@ -30,12 +28,30 @@ client_scripts {
     'client/main.lua',
     'client/delivery.lua',
     'client/crate.lua',
+    'client/hud.lua',
     'client/dispatch.lua',
+    'client/admin.lua',
 }
 
 server_scripts {
+    '@oxmysql/lib/MySQL.lua',
     'bridge/framework.lua',
     'bridge/inventory.lua',
+    'server/data.lua',
     'server/loot.lua',
     'server/main.lua',
+    'server/admin.lua',
+}
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/css/style.css',
+    'html/js/core.js',
+    'html/js/app.js',
+    'html/js/panels/live.js',
+    'html/js/panels/locations.js',
+    'html/js/panels/loot.js',
+    'html/js/panels/history.js',
 }
