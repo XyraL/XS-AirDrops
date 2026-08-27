@@ -162,7 +162,7 @@ Config.Loot = {
             name = 'rare',
             weight = 10,
             items = {
-                { item = 'weapon_pistol', min = 1, max = 1, isWeapon = true },
+                { item = 'weapon_pistol', min = 1, max = 1 },
                 { item = 'pistol_ammo',   min = 12, max = 30 },
                 { item = 'thermite',      min = 1, max = 1 },
                 { item = 'trojan_usb',    min = 1, max = 1 },
@@ -172,7 +172,7 @@ Config.Loot = {
             name = 'legendary',
             weight = 2,
             items = {
-                { item = 'weapon_assaultrifle', min = 1, max = 1, isWeapon = true },
+                { item = 'weapon_assaultrifle', min = 1, max = 1 },
                 { item = 'rifle_ammo',    min = 30, max = 60 },
                 { item = 'goldbar',       min = 1, max = 2 },
             },
@@ -186,8 +186,12 @@ Config.Loot = {
 
 -- ── Announcements ────────────────────────────────────────────────────────────
 Config.Announce = {
-    -- Tell everyone, or only players who are outside and in the open? Everyone
-    -- is the right default — the drop is a server event, not a secret.
+    -- Whether to post the text announcements at all (inbound, landed, opened).
+    -- Who receives them is decided by Config.Access.See, not here.
+    --
+    -- Turning this off leaves the blip and the on-screen countdown in place and
+    -- removes the chat-style notifications, which suits a server that would
+    -- rather players find out by looking at the map.
     ToEveryone = true,
 
     -- Name the rough area in the announcement. Turning this off makes drops
