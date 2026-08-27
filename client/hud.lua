@@ -92,6 +92,11 @@ CreateThread(function()
                 clock = nil
                 note = 'on the ground'
 
+            elseif data.state == 'open' and data.emptied then
+                heading = 'SUPPLY DROP'
+                clock = nil
+                note = 'emptied'
+
             elseif data.state == 'open' then
                 local remaining = math.floor(((data.expiresAtMs or nowMs) - nowMs) / 1000)
                 heading = 'SUPPLY DROP'

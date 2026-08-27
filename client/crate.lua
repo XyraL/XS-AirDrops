@@ -86,13 +86,14 @@ CreateThread(function()
                 if near and not busy then
                     local text = data.state == 'landed'
                         and '[~g~E~s~] Force the crate'
-                        or  '[~g~E~s~] Search the crate'
+                        or (data.emptied and 'The crate is empty'
+                            or '[~g~E~s~] Search the crate')
 
                     BeginTextCommandDisplayHelp('STRING')
                     AddTextComponentSubstringPlayerName(text)
                     EndTextCommandDisplayHelp(0, false, true, -1)
 
-                    if IsControlJustReleased(0, 38) then   -- E
+                    if IsControlJustReleased(0, 38) and not data.emptied then   -- E
                         if data.state == 'landed' then crackCrate() else lootCrate() end
                     end
                 end

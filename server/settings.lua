@@ -51,6 +51,10 @@ Settings.SCHEMA = {
       label = 'Give up after',
       help  = 'How long an uncracked crate waits. This clock only runs out on an empty zone — if anyone is there when it expires, the crate is held instead.' },
 
+    { key = 'Drop.EmptyLinger',        group = 'Timings', type = 'number', min = 0, max = 900, unit = 's',
+      label = 'Empty crate stays for',
+      help  = 'An emptied crate lingers this long instead of vanishing the moment the last item leaves. Anyone still on their way sees they were too late, and a fight over it does not lose the thing it was about.' },
+
     { key = 'Drop.PresenceGrace',      group = 'Timings', type = 'number', min = 0, max = 900, unit = 's',
       label = 'Hold it for',
       help  = 'Extra time given when the crate would have expired but somebody is in the zone or mid-crack. Applied again each time, so it outlives anyone actually using it.' },

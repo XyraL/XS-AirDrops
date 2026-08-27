@@ -65,6 +65,26 @@ if IS_SERVER then
         return Inv.name == 'ox_inventory'
     end
 
+    -- Has everything been taken out of the crate?
+    --
+    -- Only ox_inventory can answer: the other backends create their stash
+    -- lazily on open and give no way to read it back, so the drop there is
+    -- tracked by the loot list the server still holds. nil means "cannot tell",
+    -- which callers must treat differently from "no".
+    function Inv.StashIsEmpty(id)
+        if Inv.name ~= 'ox_inventory' then return nil end
+
+        local ok, items = pcall(function()
+            return exports.ox_inventory:GetInventoryItems(id)
+        end)
+        if not ok or type(items) ~= 'table' then return nil end
+
+        for _, item in pairs(items) do
+            if item and (item.count or 0) > 0 then return false end
+        end
+        return true
+    end
+
     -- Emptied when a drop ends. Every crate registers its own stash under a
     -- unique id, so without this a server accumulates one orphaned stash per
     -- drop forever — each still holding whatever nobody bothered to loot.

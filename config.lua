@@ -77,6 +77,18 @@ Config.Drop = {
     -- travelled for it. See PresenceGrace.
     AbandonedAfter = 900,
 
+    -- How long an emptied crate sticks around before it despawns.
+    --
+    -- It used to vanish the instant the last item left, which ends the event
+    -- mid-scene: anyone still driving there arrives at nothing with no idea
+    -- why, and a fight happening over the crate loses the thing it was about.
+    -- The empty box lingering says "you were too late" far better than an empty
+    -- field does.
+    --
+    -- Nothing is left to take, so this one is a hard timer — being stood in the
+    -- zone does not extend it.
+    EmptyLinger = 60,
+
     -- Extra time granted when the crate would have expired but somebody is
     -- there. Applied again each time it runs out while they are still around,
     -- so the crate outlives anyone who is genuinely using it.

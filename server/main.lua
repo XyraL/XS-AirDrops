@@ -221,6 +221,7 @@ local function publicState()
         payload.coords = Drop.coords
         payload.approx = false
         payload.crackedBy = Drop.crackedByName
+        payload.emptied = Drop.emptied or nil
     end
 
     return payload
@@ -556,6 +557,38 @@ end)
 -- than ship them an empty crate, the loot is handed out a few stacks at a time
 -- to whoever is searching. It keeps the scramble — being first still matters,
 -- and being second still gets you something.
+-- ox_inventory hands the crate over as a real stash, so the server never sees
+-- the items leave. Polled instead, only while a crate is actually open — a few
+-- seconds of latency on the "emptied" message costs nothing, and the other
+-- backends already know because the server hands the loot out itself.
+CreateThread(function()
+    while true do
+        Wait(4000)
+
+        if Drop and Drop.state == 'open' and not Drop.emptied and Drop.stashId then
+            -- nil means the backend cannot tell us, which is not the same as
+            -- "not empty" and must not trigger anything.
+            if Inv.StashIsEmpty(Drop.stashId) == true then markEmptied() end
+        end
+    end
+end)
+
+-- The crate has been cleaned out.
+--
+-- This does NOT end the drop. The crate stays as an empty husk for
+-- Config.Drop.EmptyLinger so the event has an ending people can see, rather
+-- than the objective evaporating the moment somebody grabs the last stack.
+function markEmptied()
+    if not Drop or Drop.emptied then return end
+
+    Drop.emptied = true
+    Drop.expiresAt = os.time() + (Config.Drop.EmptyLinger or 60)
+
+    announce('The crate has been emptied.')
+    broadcast()
+    log('drop %s emptied — lingering %ds', Drop.id, Config.Drop.EmptyLinger or 60)
+end
+
 RegisterNetEvent('cipher-airdrops:server:loot', function()
     local src = source
     if not Drop or Drop.state ~= 'open' then return end
@@ -602,10 +635,7 @@ RegisterNetEvent('cipher-airdrops:server:loot', function()
             given, given == 1 and '' or 's'), 'success')
     end
 
-    if #Drop.loot == 0 then
-        announce('The crate has been emptied.')
-        endDrop('emptied')
-    end
+    if #Drop.loot == 0 then markEmptied() end
 end)
 
 -- qb-inventory and ps-inventory open stashes from the server.
@@ -718,7 +748,11 @@ CreateThread(function()
             local cap = Config.Drop.MaxLifetime or 0
             local pastCap = cap > 0 and (os.time() - since) >= cap
 
-            if not pastCap and (anyoneInZone() or anyoneCracking()) then
+            -- Nothing left to protect once it is empty, so the linger is a hard
+            -- timer. Holding an empty box open because someone is stood beside
+            -- it just delays the tidy-up.
+            if not pastCap and not Drop.emptied
+                and (anyoneInZone() or anyoneCracking()) then
                 Drop.expiresAt = os.time() + (Config.Drop.PresenceGrace or 120)
                 Drop.heldOpen = true
 
@@ -728,7 +762,8 @@ CreateThread(function()
                 log('drop %s held — someone is still there', Drop.id)
             else
                 if pastCap then log('drop %s hit MaxLifetime', Drop.id) end
-                endDrop(Drop.state == 'open' and 'looted out' or 'abandoned')
+                endDrop(Drop.emptied and 'emptied'
+                    or (Drop.state == 'open' and 'looted out' or 'abandoned'))
             end
         end
     end
