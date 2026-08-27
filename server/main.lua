@@ -178,9 +178,16 @@ end
 -- the precise location in front of every client a minute and a half early, and
 -- a modified client would simply read it.
 local function approximate(coords)
-    local grid = math.max(50.0, Config.Drop.ApproxBlipRadius or 250.0)
-    local snap = function(v) return math.floor(v / grid + 0.5) * grid end
-    return vec3(snap(coords.x), snap(coords.y), coords.z)
+    -- The marker does not move. It sits on the real spot the whole time and the
+    -- CIRCLE shrinks: a wide search area while the crate is inbound, the
+    -- contested zone once it is down.
+    --
+    -- Two earlier versions moved it — a random offset, then a grid snap — and
+    -- both meant driving to one place and watching the zone relocate on
+    -- landing. Not moving it is worth more than the secrecy was: the wide
+    -- circle already hides where in it the crate will be, and the plane flies
+    -- overhead in plain sight anyway.
+    return coords
 end
 
 -- ── Broadcasting ─────────────────────────────────────────────────────────────
@@ -438,12 +445,24 @@ local function nearCrate(src)
     if not ped or ped == 0 then return false end
 
     local pos = GetEntityCoords(ped)
-    -- Measured against the stored coordinate, while the client measures against
-    -- the crate prop — and the prop is snapped to the ground on spawn, so the
-    -- two are not the same point. The extra allowance covers that difference
-    -- plus a stale position update; it is still far too tight to reach from
-    -- anywhere a player is not standing.
-    return #(pos - Drop.coords) <= (Config.Drop.CrackDistance or 5.0) + 3.0
+    local reach = (Config.Drop.CrackDistance or 5.0) + 3.0
+
+    -- Horizontal distance, with height checked separately and loosely.
+    --
+    -- A 3D check against the stored coordinate does not work: the crate is
+    -- placed on the GROUND under that point, and the point itself came from
+    -- wherever an admin was standing. Capture a spot on top of an embankment
+    -- and the crate lands at the water's edge several metres below it — enough
+    -- height difference on its own to fail an 8m 3D check while the player is
+    -- pressed against the box.
+    --
+    -- The crate never moves horizontally from the stored x/y, so that is the
+    -- axis worth being strict about. The height allowance only has to cover the
+    -- drop from the stored point to the ground.
+    local flat = #(vector3(pos.x, pos.y, 0.0) - vector3(Drop.coords.x, Drop.coords.y, 0.0))
+    local drop = math.abs(pos.z - Drop.coords.z)
+
+    return flat <= reach and drop <= 25.0
 end
 
 RegisterNetEvent('cipher-airdrops:server:beginCrack', function()

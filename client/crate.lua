@@ -10,16 +10,24 @@ local function nearCrate()
     local data = Airdrop.data
     if not data or not data.coords then return false, nil end
 
-    -- Prefer the crate's real position over the stored coordinate. They are not
-    -- the same thing: the prop is snapped to the ground on spawn, and a stored Z
-    -- that is a few metres out would otherwise keep you "too far" while you are
-    -- stood against the box.
-    local target = Airdrop.propCoords
-        or vector3(data.coords.x, data.coords.y, data.coords.z)
-
     local pos = GetEntityCoords(PlayerPedId())
-    local dist = #(pos - target)
-    return dist <= (Config.Drop.CrackDistance or 5.0), dist
+    local reach = Config.Drop.CrackDistance or 5.0
+
+    -- Once the crate exists, measure to it. That is the thing on screen and the
+    -- thing the player is walking up to.
+    if Airdrop.propCoords then
+        local dist = #(pos - Airdrop.propCoords)
+        return dist <= reach, dist
+    end
+
+    -- No prop yet. Fall back to the stored point, but measure it the same way
+    -- the server does — flat, with a loose height allowance. A location
+    -- captured on top of an embankment sits well above the ground the crate
+    -- will rest on, and a 3D check would call that "too far" on height alone.
+    local flat = #(vector3(pos.x, pos.y, 0.0) - vector3(data.coords.x, data.coords.y, 0.0))
+    local drop = math.abs(pos.z - data.coords.z)
+
+    return (flat <= reach and drop <= 25.0), flat
 end
 
 local function crackCrate()
