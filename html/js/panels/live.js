@@ -146,6 +146,19 @@ async function openStartDropModal() {
     const list = (locations && locations.rows) || [];
     const usable = list.filter(l => l.enabled);
 
+    // Nothing to drop on. Saying so here beats an empty dropdown that looks
+    // like the panel is broken.
+    if (!usable.length) {
+        modal('No locations', `
+            <p class="text-secondary">
+                ${list.length
+                    ? 'Every location is switched off. Turn one on from the Locations tab.'
+                    : 'There are no drop locations yet. Go and stand somewhere worth fighting over, then add it from the Locations tab.'}
+            </p>`,
+            () => { showPanel('locations'); }, 'Open Locations');
+        return;
+    }
+
     modal('Start a drop', `
         <div class="form-group">
             <label class="form-label">Location</label>

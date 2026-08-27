@@ -73,7 +73,7 @@ end)
 admin('getLocations', function()
     local rows = Data.Locations(true)
     -- The panel wants booleans; MySQL hands back 1 and 0.
-    for _, row in ipairs(rows) do row.enabled = row.enabled == 1 end
+    for _, row in ipairs(rows) do row.enabled = Data.IsOn(row.enabled) end
     return { rows = rows }
 end)
 
@@ -89,15 +89,47 @@ admin('deleteLocation', function(_, data)
     return { ok = true }
 end)
 
+admin('deleteAllLocations', function()
+    local ok, count = Data.DeleteAllLocations()
+    if not ok then return { ok = false, error = 'Could not clear them' } end
+    return { ok = true, removed = count }
+end)
+
+-- Calls a silent drop straight at one location. The point of building a
+-- location is finding out whether it plays well, and walking back to the Live
+-- tab to pick it out of a dropdown every time is friction for no reason.
+admin('testLocation', function(src, data)
+    if not data.id then return { ok = false, error = 'No location' } end
+
+    -- Disabled locations included on purpose: testing one is how you decide
+    -- whether to enable it.
+    local location
+    for _, row in ipairs(Data.Locations(true)) do
+        if row.id == data.id then
+            location = {
+                id = row.id, label = row.label,
+                coords = vec3(row.x, row.y, row.z),
+                weight = row.weight, radius = row.radius,
+            }
+            break
+        end
+    end
+    if not location then return { ok = false, error = 'That location no longer exists' } end
+
+    local ok, err = Airdrops.Start(location, GetPlayerName(src), { silent = true })
+    if not ok then return { ok = false, error = err } end
+    return { ok = true }
+end)
+
 -- ── Loot ─────────────────────────────────────────────────────────────────────
 
 admin('getLoot', function()
     local tiers = Data.Tiers(true)
 
     for _, tier in ipairs(tiers) do
-        tier.enabled = tier.enabled == 1
+        tier.enabled = Data.IsOn(tier.enabled)
         for _, item in ipairs(tier.items or {}) do
-            item.enabled = item.enabled == 1
+            item.enabled = Data.IsOn(item.enabled)
         end
     end
 

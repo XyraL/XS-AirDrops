@@ -95,23 +95,14 @@ Config.Delivery = {
 }
 
 -- ── Where drops land ─────────────────────────────────────────────────────────
--- Add or remove freely. Pick open ground with more than one approach: a spot
--- with a single road in belongs to whoever parks on it.
+-- Deliberately empty. Locations are built in game from the admin panel, where
+-- you can stand on the spot and capture it, rather than guessing coordinates
+-- in a text file.
 --
--- `weight` biases selection. The same location will not be chosen twice in a
--- row regardless of weight.
-Config.Locations = {
-    { label = 'Sandy Shores Airfield', coords = vec3(1747.0, 3286.0, 41.0),   weight = 10 },
-    { label = 'Grapeseed Fields',      coords = vec3(2263.0, 4780.0, 35.0),   weight = 10 },
-    { label = 'Vinewood Racetrack',    coords = vec3(1020.0, -1290.0, 30.0),  weight = 8  },
-    { label = 'Palmer-Taylor Power',   coords = vec3(2745.0, 1580.0, 24.0),   weight = 8  },
-    { label = 'Cassidy Creek',         coords = vec3(-450.0, 4380.0, 60.0),   weight = 6  },
-    { label = 'Chumash Beach',         coords = vec3(-3220.0, 1080.0, 11.0),  weight = 6  },
-    { label = 'Elysian Docks',         coords = vec3(150.0, -3000.0, 6.0),    weight = 8  },
-    { label = 'Zancudo Riverbed',      coords = vec3(-1180.0, 2680.0, 18.0),  weight = 6  },
-    { label = 'Mount Gordo',           coords = vec3(2880.0, 5900.0, 370.0),  weight = 4  },
-    { label = 'Route 68 Scrapyard',    coords = vec3(-430.0, 2790.0, 42.0),   weight = 6  },
-}
+-- Anything listed here is seeded into the database on FIRST START ONLY. After
+-- that the database owns them and this list is ignored, so leaving it empty
+-- means the panel is the only place locations come from.
+Config.Locations = {}
 
 -- ── Loot ─────────────────────────────────────────────────────────────────────
 -- Loot is rolled ON THE SERVER, at the moment the crate is cracked. Not when it

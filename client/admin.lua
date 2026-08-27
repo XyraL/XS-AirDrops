@@ -20,18 +20,38 @@ local function openPanel()
     SendNUIMessage({ action = 'open', payload = { name = name } })
 end
 
-local function closePanel()
+-- Give the game back its input. Nothing is told to close, because the only
+-- caller that matters here is the page telling US it has closed.
+local function releaseFocus()
     panelOpen = false
     SetNuiFocus(false, false)
+end
+
+-- Closing from the game side: the page does not know yet, so it gets told.
+local function closePanel()
+    releaseFocus()
     SendNUIMessage({ action = 'close' })
 end
 
+-- The page has already hidden itself by the time this arrives. Calling the full
+-- closePanel() here sent a 'close' message straight back, which made the page
+-- call this again, forever — and a message still in flight would re-hide the
+-- panel the instant it was reopened, which looked like the command had stopped
+-- working.
 RegisterNUICallback('closePanel', function(_, cb)
-    closePanel()
+    releaseFocus()
     cb({})
 end)
 
 RegisterCommand('airdrops', openPanel, false)
+
+-- Restarting the resource with the panel open would otherwise leave NUI focus
+-- grabbed by a page that no longer exists — mouse captured, no keyboard, and
+-- nothing on screen to close. The player would have to reconnect.
+AddEventHandler('onResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    if panelOpen then closePanel() end
+end)
 
 -- Live state pushes, so an admin watching the panel sees a drop land.
 RegisterNetEvent('cipher-airdrops:client:refreshPanel', function()
@@ -45,7 +65,7 @@ end)
 -- server callbacks through this bridge.
 local RELAYS = {
     'getLive', 'startDrop', 'cancelDrop',
-    'getLocations', 'saveLocation', 'deleteLocation',
+    'getLocations', 'saveLocation', 'deleteLocation', 'deleteAllLocations', 'testLocation',
     'getLoot', 'saveTier', 'deleteTier', 'saveLoot', 'deleteLoot',
     'getHistory',
     'getSettings', 'saveSetting', 'resetSetting',

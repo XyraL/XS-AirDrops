@@ -8,6 +8,16 @@
 -- times.
 Data = { ready = false }
 
+-- Is a TINYINT(1) column on?
+--
+-- oxmysql hands TINYINT(1) back as a Lua boolean, not as 1. Comparing to 1
+-- therefore fails for every row, which is not a small bug here: Locations() and
+-- Tiers() both filter on it, so the scheduler found no places to drop and every
+-- crate rolled empty. Accept whatever the driver decides to give us.
+function Data.IsOn(value)
+    return value == true or value == 1 or value == '1'
+end
+
 local cache = { locations = nil, tiers = nil, loot = nil }
 
 function Data.Invalidate()
@@ -83,7 +93,7 @@ function Data.Locations(includeDisabled)
 
     local out = {}
     for _, loc in ipairs(cache.locations) do
-        if loc.enabled == 1 then out[#out + 1] = loc end
+        if Data.IsOn(loc.enabled) then out[#out + 1] = loc end
     end
     return out
 end
@@ -111,10 +121,10 @@ function Data.Tiers(includeDisabled)
 
     local out = {}
     for _, tier in ipairs(cache.tiers) do
-        if tier.enabled == 1 then
+        if Data.IsOn(tier.enabled) then
             local items = {}
             for _, item in ipairs(tier.items) do
-                if item.enabled == 1 then items[#items + 1] = item end
+                if Data.IsOn(item.enabled) then items[#items + 1] = item end
             end
             if #items > 0 then
                 out[#out + 1] = {
@@ -159,18 +169,22 @@ end
 function Data.DeleteLocation(id)
     if not id then return false, 'No location' end
 
-    -- Refuse to remove the last one. An empty table means the scheduler picks
-    -- nothing and drops silently stop happening, which looks like a bug rather
-    -- than a configuration choice.
-    local remaining = MySQL.scalar.await(
-        'SELECT COUNT(*) FROM cipher_airdrop_locations WHERE id != ?', { id })
-    if not remaining or remaining < 1 then
-        return false, 'That is the last location — disable it instead'
-    end
-
+    -- Deleting the last one used to be refused, on the grounds that an empty
+    -- table stops drops silently. But clearing the lot and building your own is
+    -- exactly what a new server wants to do, and blocking it is worse than the
+    -- thing it was protecting against. The panel says plainly when there are
+    -- none left instead.
     MySQL.query.await('DELETE FROM cipher_airdrop_locations WHERE id = ?', { id })
     Data.Invalidate()
     return true
+end
+
+-- Clears the lot. The panel asks twice before calling this.
+function Data.DeleteAllLocations()
+    local count = MySQL.scalar.await('SELECT COUNT(*) FROM cipher_airdrop_locations') or 0
+    MySQL.query.await('DELETE FROM cipher_airdrop_locations')
+    Data.Invalidate()
+    return true, count
 end
 
 function Data.SaveTier(tier)
