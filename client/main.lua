@@ -27,6 +27,10 @@ local function clearProp()
         DeleteEntity(Airdrop.prop)
     end
     Airdrop.prop = nil
+
+    -- Must go with the prop. A leftover coordinate would have the next drop
+    -- measuring your reach against the last crate.
+    Airdrop.propCoords = nil
 end
 
 function AirdropCleanup()

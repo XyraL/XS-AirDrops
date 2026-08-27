@@ -19,9 +19,22 @@ local function ensurePtfx()
     return HasNamedPtfxAssetLoaded('core')
 end
 
+local warnedModel = {}
+
 local function loadModel(model)
     local hash = type(model) == 'number' and model or joaat(model)
-    if not IsModelValid(hash) then return nil end
+
+    -- A bad model name used to return nil here and the caller gave up quietly,
+    -- which means no crate spawns and the drop looks like it simply does not
+    -- work. Say which model, once.
+    if not IsModelValid(hash) then
+        if not warnedModel[hash] then
+            warnedModel[hash] = true
+            print(('^1[cipher-airdrops]^0 "%s" is not a valid model — check Config.Delivery.')
+                :format(tostring(model)))
+        end
+        return nil
+    end
 
     RequestModel(hash)
     local deadline = GetGameTimer() + 10000
@@ -33,10 +46,21 @@ local function loadModel(model)
 end
 
 -- Spawns the crate the player can walk up to. Local, unnetworked, frozen.
+-- Used when the configured crate model will not load. Anything is better than
+-- an invisible crate the player is told to go and open.
+local CRATE_FALLBACK = 'prop_mil_crate_01'
+
 function AirdropSpawnCrate(coords)
     CreateThread(function()
         local hash = loadModel(Config.Delivery.CrateModel)
-        if not hash then return end
+
+        if not hash then
+            hash = loadModel(CRATE_FALLBACK)
+            if not hash then
+                print('^1[cipher-airdrops]^0 no crate model would load — the drop has nothing to open.')
+                return
+            end
+        end
 
         local ground, z = GetGroundZFor_3dCoord(coords.x, coords.y, coords.z + 5.0, false)
         local placeZ = ground and z or coords.z
@@ -48,6 +72,13 @@ function AirdropSpawnCrate(coords)
         SetModelAsNoLongerNeeded(hash)
 
         Airdrop.prop = prop
+
+        -- Where it REALLY is, after the ground snap. The stored location can be
+        -- a couple of metres off vertically — captured from a ped standing on a
+        -- kerb, or a Z typed in by hand — and the reach check measures in 3D, so
+        -- that difference alone could put the crate out of reach while you are
+        -- standing on top of it.
+        Airdrop.propCoords = GetEntityCoords(prop)
     end)
 end
 

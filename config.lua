@@ -74,7 +74,20 @@ Config.Drop = {
 
     -- Metres a player may drift from the crate before cracking cancels. The
     -- server re-checks this on completion too, so a teleport does not help.
-    CrackDistance = 3.0,
+    -- 3 metres was too tight against a crate you are standing next to, once
+    -- the prop's own size is in the measurement. The server allows a little
+    -- more than this again, so a slow position update cannot rob you of it.
+    CrackDistance = 5.0,
+
+    -- How close you must be for the on-screen drop status to appear, in metres.
+    --
+    -- A permanent banner for something happening across the map is clutter —
+    -- the blip already says a drop exists, and the countdown only matters once
+    -- you have decided to go. Being inside the contested zone always shows it,
+    -- whatever this is set to.
+    --
+    -- 0 = always on screen while a drop is running.
+    HudDistance = 400.0,
 }
 
 -- ── Delivery ─────────────────────────────────────────────────────────────────
@@ -85,7 +98,10 @@ Config.Delivery = {
     Flyover = true,
 
     PlaneModel = 'titan',
-    CrateModel = 'prop_box_ammo04a',
+    -- A proper military supply crate. Big enough to read as a drop from a
+    -- distance, which an ammo box is not. If it will not load, the script falls
+    -- back to one that will rather than spawning nothing.
+    CrateModel = 'prop_mil_crate_01',
 
     Altitude = 320.0,
     PlaneSpeed = 90.0,

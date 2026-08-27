@@ -10,9 +10,16 @@ local function nearCrate()
     local data = Airdrop.data
     if not data or not data.coords then return false, nil end
 
+    -- Prefer the crate's real position over the stored coordinate. They are not
+    -- the same thing: the prop is snapped to the ground on spawn, and a stored Z
+    -- that is a few metres out would otherwise keep you "too far" while you are
+    -- stood against the box.
+    local target = Airdrop.propCoords
+        or vector3(data.coords.x, data.coords.y, data.coords.z)
+
     local pos = GetEntityCoords(PlayerPedId())
-    local dist = #(pos - vector3(data.coords.x, data.coords.y, data.coords.z))
-    return dist <= (Config.Drop.CrackDistance or 3.0), dist
+    local dist = #(pos - target)
+    return dist <= (Config.Drop.CrackDistance or 5.0), dist
 end
 
 local function crackCrate()
@@ -100,7 +107,7 @@ CreateThread(function()
             name = 'cipher_airdrop_crack',
             label = 'Force the crate',
             icon = 'fa-solid fa-screwdriver-wrench',
-            distance = Config.Drop.CrackDistance or 3.0,
+            distance = Config.Drop.CrackDistance or 5.0,
             canInteract = function()
                 local data = Airdrop.data
                 return data and data.state == 'landed' and nearCrate()
@@ -111,7 +118,7 @@ CreateThread(function()
             name = 'cipher_airdrop_loot',
             label = 'Search the crate',
             icon = 'fa-solid fa-box-open',
-            distance = Config.Drop.CrackDistance or 3.0,
+            distance = Config.Drop.CrackDistance or 5.0,
             canInteract = function()
                 local data = Airdrop.data
                 return data and data.state == 'open' and nearCrate()

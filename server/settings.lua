@@ -60,6 +60,10 @@ Settings.SCHEMA = {
       label = 'Search radius',
       help  = 'How vague the first blip is. Zero gives the exact spot away at announcement.' },
 
+    { key = 'Drop.HudDistance',        group = 'Area', type = 'number', min = 0, max = 3000, unit = 'm',
+      label = 'Show the on-screen status within',
+      help  = 'How close you must be before the drop status appears on screen. A banner for something across the map is clutter. Inside the zone always shows it. 0 keeps it on screen the whole time.' },
+
     { key = 'Drop.CrackDistance',      group = 'Area', type = 'number', min = 1, max = 15, unit = 'm',
       label = 'Reach',
       help  = 'How close you must be to crack or loot. The server re-checks this, so a teleport does not help.' },
@@ -95,6 +99,10 @@ Settings.SCHEMA = {
     { key = 'Announce.NameLocation',   group = 'Presentation', type = 'bool',
       label = 'Name the area',
       help  = 'Off makes drops much harder to find and heavily favours whoever happens to be nearby.' },
+
+    { key = 'Delivery.CrateModel',     group = 'Presentation', type = 'text',
+      label = 'Crate prop',
+      help  = 'Model name for the crate. Falls back to prop_mil_crate_01 if it will not load, rather than spawning nothing.' },
 
     { key = 'Delivery.Flyover',        group = 'Presentation', type = 'bool',
       label = 'Plane flyover',
@@ -284,7 +292,9 @@ end
 
 local CLIENT_KEYS = {
     'Drop.CrackTime', 'Drop.CrackDistance', 'Drop.ZoneRadius', 'Drop.ApproxBlipRadius',
-    'Delivery.Flyover', 'Sounds.Enabled', 'Sounds.CountdownTicks',
+    'Drop.HudDistance',
+    'Delivery.Flyover', 'Delivery.CrateModel',
+    'Sounds.Enabled', 'Sounds.CountdownTicks',
 }
 
 local function clientPayload()

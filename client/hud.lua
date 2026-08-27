@@ -1,80 +1,128 @@
--- The countdown.
+-- The on-screen drop status.
 --
--- A notification saying "90 seconds out" is read once and then forgotten, and
--- the whole warning window is a decision about whether to travel. Players need
--- to be able to glance at the remaining time for as long as it matters, so it
--- is on screen rather than in a toast.
+-- Deliberately small and out of the way. It sits under the minimap side of the
+-- screen rather than across the top middle, where it fought with the compass
+-- and looked like a debug readout.
 --
--- Drawn with natives rather than NUI on purpose: this is four lines of text
--- that must be visible while driving, and a permanently-open NUI frame to
--- render them would take input focus problems for nothing.
+-- It only appears when you are actually near the drop. A permanent banner for
+-- an event happening on the other side of the map is clutter — the blip already
+-- tells you it exists, and the countdown only matters once you are committed to
+-- going. Config.Drop.HudDistance decides "near", or set it to 0 to always show.
 
 local function fmtClock(seconds)
     if seconds < 0 then seconds = 0 end
     return ('%d:%02d'):format(math.floor(seconds / 60), seconds % 60)
 end
 
-local function drawText(text, x, y, scale, r, g, b, a)
+-- Right-aligned, so the block grows leftwards from a fixed edge instead of
+-- shifting about as the text changes width.
+local function text(str, x, y, scale, colour, align)
     SetTextFont(4)
     SetTextScale(scale, scale)
-    SetTextColour(r, g, b, a)
-    SetTextDropshadow(0, 0, 0, 0, 255)
-    SetTextEdge(1, 0, 0, 0, 205)
+    SetTextColour(colour[1], colour[2], colour[3], colour[4] or 255)
+    SetTextDropshadow(0, 0, 0, 0, 200)
     SetTextDropShadow()
-    SetTextOutline()
-    SetTextCentre(true)
+
+    if align == 'right' then
+        SetTextRightJustify(true)
+        SetTextWrap(0.0, x)
+    elseif align == 'centre' then
+        SetTextCentre(true)
+    end
+
     SetTextEntry('STRING')
-    AddTextComponentSubstringPlayerName(text)
-    DrawText(x, y)
+    AddTextComponentSubstringPlayerName(str)
+    DrawText(align == 'right' and 0.0 or x, y)
 end
 
--- The panel background. Sized to the text rather than a fixed box so a long
--- location name does not overflow it.
-local function drawBox(x, y, w, h, r, g, b, a)
-    DrawRect(x, y, w, h, r, g, b, a)
+local WHITE = { 255, 255, 255 }
+local MUTED = { 170, 180, 190 }
+local AMBER = { 245, 165, 36 }
+local RED   = { 255, 90, 95 }
+local GREEN = { 48, 209, 88 }
+
+-- How far away the drop is, or nil when there is nothing to measure.
+local function distanceToDrop(data)
+    if not data or not data.coords then return nil end
+    local pos = GetEntityCoords(PlayerPedId())
+    return #(pos - vector3(data.coords.x, data.coords.y, data.coords.z))
+end
+
+local function shouldShow(data, dist)
+    if not data or not data.state then return false end
+
+    local limit = Config.Drop.HudDistance
+    if not limit or limit <= 0 then return true end   -- 0 = always on
+
+    -- Fall back to showing it if the distance cannot be worked out, rather than
+    -- hiding a live drop because of a missing coordinate.
+    if not dist then return true end
+
+    -- The zone itself, plus the limit. Being inside the contested area always
+    -- counts as near, however the limit is configured.
+    return dist <= math.max(limit, (data.zoneRadius or 120.0))
 end
 
 CreateThread(function()
     while true do
-        local wait = 500
+        local wait = 400
         local data = Airdrop.data
+        local dist = distanceToDrop(data)
 
-        if data and data.state then
+        if shouldShow(data, dist) then
             wait = 0
 
             local nowMs = GetGameTimer()
-            local x, y = 0.5, 0.035
+
+            -- Anchored to the right edge, above the ammo/health area.
+            local right, y = 0.955, 0.845
+            local line = 0.032
+
+            local heading, clock, clockColour, note
 
             if data.state == 'announced' or data.state == 'inbound' then
                 local remaining = math.floor(((data.landsAtMs or nowMs) - nowMs) / 1000)
-
-                -- Turns red in the last fifteen seconds. If you are not moving
-                -- by then, you are not getting there first.
-                local urgent = remaining <= 15
-                local cr, cg, cb = 255, 255, 255
-                if urgent then cr, cg, cb = 255, 90, 95 end
-
-                drawBox(x, y + 0.018, 0.20, 0.075, 0, 0, 0, 150)
-                drawText('~y~SUPPLY DROP INBOUND', x, y, 0.45, 255, 255, 255, 255)
-                drawText(fmtClock(remaining), x, y + 0.022, 0.75, cr, cg, cb, 255)
-
-                if data.label then
-                    drawText(data.label, x, y + 0.055, 0.34, 200, 200, 200, 220)
-                end
+                heading = 'SUPPLY DROP'
+                clock = fmtClock(remaining)
+                clockColour = remaining <= 15 and RED or WHITE
+                note = 'inbound'
 
             elseif data.state == 'landed' then
-                drawBox(x, y + 0.012, 0.20, 0.055, 0, 0, 0, 150)
-                drawText('~r~CRATE ON THE GROUND', x, y, 0.45, 255, 255, 255, 255)
-                if data.label then
-                    drawText(data.label, x, y + 0.024, 0.34, 200, 200, 200, 220)
-                end
+                heading = 'SUPPLY DROP'
+                clock = nil
+                note = 'on the ground'
 
             elseif data.state == 'open' then
                 local remaining = math.floor(((data.expiresAtMs or nowMs) - nowMs) / 1000)
+                heading = 'SUPPLY DROP'
+                clock = fmtClock(remaining)
+                clockColour = GREEN
+                note = 'open · closes in'
+            end
 
-                drawBox(x, y + 0.012, 0.20, 0.055, 0, 0, 0, 150)
-                drawText('~g~CRATE OPEN', x, y, 0.45, 255, 255, 255, 255)
-                drawText(('closes in %s'):format(fmtClock(remaining)), x, y + 0.024, 0.34, 200, 200, 200, 220)
+            if heading then
+                -- A thin accent rule rather than a filled box. The old panel was
+                -- a grey slab that covered the compass.
+                DrawRect(right + 0.0075, y + 0.028, 0.0022, 0.075, AMBER[1], AMBER[2], AMBER[3], 220)
+
+                text(heading, right, y, 0.30, AMBER, 'right')
+
+                if clock then
+                    text(note, right, y + 0.026, 0.26, MUTED, 'right')
+                    text(clock, right, y + 0.046, 0.52, clockColour or WHITE, 'right')
+                else
+                    text(note, right, y + 0.026, 0.30, RED, 'right')
+                end
+
+                if data.label then
+                    text(data.label, right, y + (clock and 0.086 or 0.056), 0.24, MUTED, 'right')
+                end
+
+                -- Only worth showing while you are still closing on it.
+                if dist and dist > 60.0 and data.state ~= 'open' then
+                    text(('%dm'):format(math.floor(dist)), right,
+                        y + (clock and 0.106 or 0.076), 0.24, MUTED, 'right')
+                end
             end
         end
 

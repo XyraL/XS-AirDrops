@@ -163,13 +163,24 @@ local function pickLocation(forcedLabel)
     return nil
 end
 
--- Somewhere within ApproxBlipRadius of the real spot, so the first blip points
--- at the right area without giving away the exact coordinate.
+-- The search area shown before the crate is on the ground.
+--
+-- This used to be offset in a RANDOM direction from the real spot, so the
+-- circle visibly jumped across the map at landing — you drove to one place and
+-- the zone moved somewhere else entirely.
+--
+-- It is snapped to a grid instead. The centre is stable, sits within half a
+-- grid square of the real coordinate, and the landing zone always appears
+-- inside or overlapping it, so the search narrows rather than relocating.
+--
+-- The exact coordinate is still never sent while the drop is inbound. Centring
+-- the circle on the real spot would have fixed the jump too, but it would put
+-- the precise location in front of every client a minute and a half early, and
+-- a modified client would simply read it.
 local function approximate(coords)
-    local r = Config.Drop.ApproxBlipRadius or 250.0
-    local angle = math.random() * math.pi * 2
-    local dist = math.sqrt(math.random()) * r
-    return vec3(coords.x + math.cos(angle) * dist, coords.y + math.sin(angle) * dist, coords.z)
+    local grid = math.max(50.0, Config.Drop.ApproxBlipRadius or 250.0)
+    local snap = function(v) return math.floor(v / grid + 0.5) * grid end
+    return vec3(snap(coords.x), snap(coords.y), coords.z)
 end
 
 -- ── Broadcasting ─────────────────────────────────────────────────────────────
@@ -394,13 +405,29 @@ local function nearCrate(src)
     if not ped or ped == 0 then return false end
 
     local pos = GetEntityCoords(ped)
-    return #(pos - Drop.coords) <= (Config.Drop.CrackDistance or 3.0) + 2.0
+    -- Measured against the stored coordinate, while the client measures against
+    -- the crate prop — and the prop is snapped to the ground on spawn, so the
+    -- two are not the same point. The extra allowance covers that difference
+    -- plus a stale position update; it is still far too tight to reach from
+    -- anywhere a player is not standing.
+    return #(pos - Drop.coords) <= (Config.Drop.CrackDistance or 5.0) + 3.0
 end
 
 RegisterNetEvent('cipher-airdrops:server:beginCrack', function()
     local src = source
-    if not Drop or Drop.state ~= 'landed' then return end
-    if not nearCrate(src) then return end
+
+    if not Drop or Drop.state ~= 'landed' then
+        Framework.Notify(src, 'There is no crate to open.', 'error')
+        return
+    end
+
+    -- The client measures to the crate prop and the server measures to the
+    -- stored coordinate, so these can disagree by a metre or two. Saying so
+    -- beats a progress bar that completes and does nothing.
+    if not nearCrate(src) then
+        Framework.Notify(src, 'You are not close enough to the crate.', 'error')
+        return
+    end
 
     if not canCollect(src) then
         Framework.Notify(src, Config.Access.DeniedMessage, 'error')
@@ -416,8 +443,13 @@ RegisterNetEvent('cipher-airdrops:server:finishCrack', function()
     if not Drop or Drop.state ~= 'landed' then return end
     if not canCollect(src) then return end
 
+    -- No record of them starting. Usually means beginCrack was refused, and
+    -- that refusal already explained itself.
     local startedAt = Drop.cracks[src]
-    if not startedAt then return end
+    if not startedAt then
+        Framework.Notify(src, 'That did not count — start again at the crate.', 'error')
+        return
+    end
 
     -- A second of grace for latency, and no more. Without this check a client
     -- can simply send finishCrack immediately after beginCrack.
