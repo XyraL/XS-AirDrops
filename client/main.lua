@@ -76,7 +76,7 @@ local function buildBlips(data)
     end
 end
 
-RegisterNetEvent('cipher-airdrops:client:sync', function(data)
+RegisterNetEvent('XS-AirDrops:client:sync', function(data)
     if not data then
         AirdropCleanup()
         return
@@ -110,18 +110,18 @@ RegisterNetEvent('cipher-airdrops:client:sync', function(data)
     end
 end)
 
-RegisterNetEvent('cipher-airdrops:client:announce', function(message)
+RegisterNetEvent('XS-AirDrops:client:announce', function(message)
     Framework.Notify(message, 'inform', 'Airdrop')
 end)
 
-RegisterNetEvent('cipher-airdrops:client:openStash', function(id, data)
+RegisterNetEvent('XS-AirDrops:client:openStash', function(id, data)
     Inv.OpenStash(id, data)
 end)
 
 -- Someone joining mid-event should see the drop that is already running.
 AddEventHandler('onClientResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
-    TriggerServerEvent('cipher-airdrops:server:requestSync')
+    TriggerServerEvent('XS-AirDrops:server:requestSync')
 end)
 
 AddEventHandler('onResourceStop', function(resource)

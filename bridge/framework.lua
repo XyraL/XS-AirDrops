@@ -16,7 +16,7 @@ Framework = { name = nil, core = nil }
 -- problem. This is the first file to load in both contexts, so it is where the
 -- real cause gets named.
 if not Config then
-    print(('^1[cipher-airdrops]^0 config.lua did not load, so this resource cannot start.\n'
+    print(('^1[XS-AirDrops]^0 config.lua did not load, so this resource cannot start.\n'
         .. '  Almost always start order. In server.cfg, these must come first:\n'
         .. '    ensure ox_lib\n'
         .. '    ensure oxmysql\n'
@@ -32,7 +32,7 @@ elseif forced == 'qbcore' or (forced == 'auto' and GetResourceState('qb-core') =
     Framework.name = 'qbcore'
     Framework.core = exports['qb-core']:GetCoreObject()
 else
-    print('^1[cipher-airdrops]^0 No supported framework found. Start qbx_core or qb-core before cipher-airdrops.')
+    print('^1[XS-AirDrops]^0 No supported framework found. Start qbx_core or qb-core before XS-AirDrops.')
 end
 
 local IS_SERVER = IsDuplicityVersion()
@@ -131,13 +131,13 @@ if IS_SERVER then
     function Framework.AddMoney(src, account, amount, reason)
         local player = Framework.GetPlayer(src)
         if not player then return false end
-        return player.Functions.AddMoney(account, amount, reason or 'cipher-airdrops')
+        return player.Functions.AddMoney(account, amount, reason or 'XS-AirDrops')
     end
 
     function Framework.RemoveMoney(src, account, amount, reason)
         local player = Framework.GetPlayer(src)
         if not player then return false end
-        return player.Functions.RemoveMoney(account, amount, reason or 'cipher-airdrops')
+        return player.Functions.RemoveMoney(account, amount, reason or 'XS-AirDrops')
     end
 
     function Framework.GetMoney(src, account)
@@ -206,6 +206,6 @@ else
 end
 
 if Config and Config.Debug then
-    print(('^2[cipher-airdrops]^0 framework bridge loaded (%s) on %s'):format(
+    print(('^2[XS-AirDrops]^0 framework bridge loaded (%s) on %s'):format(
         Framework.name or 'none', IS_SERVER and 'server' or 'client'))
 end

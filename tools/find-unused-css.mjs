@@ -1,6 +1,6 @@
 // Reports CSS class selectors that nothing in this resource uses.
 //
-// The stylesheet started as a copy of cipher-admin's, so it arrived carrying
+// The stylesheet started as a copy of XS-AdminMenu's, so it arrived carrying
 // rules for ban tables, threat cards and inventory slots — panels that do not
 // exist here. This finds them. It only REPORTS; removing a rule is a decision,
 // not something a script should do to a stylesheet unattended.

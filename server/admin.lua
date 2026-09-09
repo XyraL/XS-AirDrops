@@ -15,7 +15,7 @@ end
 
 -- Wraps a callback so the permission check cannot be forgotten on a new one.
 local function admin(name, handler)
-    lib.callback.register('cipher-airdrops:server:admin:' .. name, function(source, data)
+    lib.callback.register('XS-AirDrops:server:admin:' .. name, function(source, data)
         if not isAdmin(source) then
             return { ok = false, error = 'You do not have permission for that.' }
         end
@@ -23,7 +23,7 @@ local function admin(name, handler)
     end)
 end
 
-lib.callback.register('cipher-airdrops:server:canAdmin', function(source)
+lib.callback.register('XS-AirDrops:server:canAdmin', function(source)
     if not isAdmin(source) then return false end
     return true, GetPlayerName(source)
 end)

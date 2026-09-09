@@ -5,7 +5,7 @@
 -- three-way one. That is the most interesting thing this script can do to a
 -- server that already has both.
 --
--- Detection order matters: cipher-dispatch first because it is ours and gets
+-- Detection order matters: XS-Dispatch first because it is ours and gets
 -- the richest call, then the common community ones, then a plain notification
 -- so a server with no dispatch resource still gets told.
 
@@ -22,7 +22,7 @@ end
 
 local function detectDispatch()
     local candidates = {
-        'cipher-dispatch',
+        'XS-Dispatch',
         'ps-dispatch',
         'qs-dispatch',
         'cd_dispatch',
@@ -37,7 +37,7 @@ local function detectDispatch()
     return nil
 end
 
-RegisterNetEvent('cipher-airdrops:client:policeAlert', function(data)
+RegisterNetEvent('XS-AirDrops:client:policeAlert', function(data)
     -- Every client receives this; only officers act on it. Filtering here
     -- rather than server-side keeps the job lookup on the machine that already
     -- knows the answer.
@@ -46,8 +46,8 @@ RegisterNetEvent('cipher-airdrops:client:policeAlert', function(data)
     local coords = vector3(data.coords.x, data.coords.y, data.coords.z)
     local provider = detectDispatch()
 
-    if provider == 'cipher-dispatch' then
-        exports['cipher-dispatch']:CustomAlert({
+    if provider == 'XS-Dispatch' then
+        exports['XS-Dispatch']:CustomAlert({
             code = data.code or '10-66',
             title = data.title or 'Unregistered Cargo Drop',
             description = 'Aircraft observed dropping cargo. Multiple parties likely responding.',

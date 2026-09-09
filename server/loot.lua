@@ -48,7 +48,7 @@ function Loot.Roll()
     local out = {}
 
     if #tiers == 0 then
-        print('^1[cipher-airdrops]^0 no enabled loot tiers — the crate will be empty')
+        print('^1[XS-AirDrops]^0 no enabled loot tiers — the crate will be empty')
         return out
     end
 
@@ -111,7 +111,7 @@ function Loot.Validate()
     end
 
     if #problems > 0 then
-        print('^1[cipher-airdrops]^0 loot problems:')
+        print('^1[XS-AirDrops]^0 loot problems:')
         for _, p in ipairs(problems) do print('  - ' .. p) end
         return false
     end

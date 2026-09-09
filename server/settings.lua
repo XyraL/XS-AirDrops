@@ -342,7 +342,7 @@ function Settings.Load()
         defaults[entry.key] = value
     end
 
-    local rows = MySQL.query.await('SELECT `key`, `value` FROM cipher_airdrop_settings') or {}
+    local rows = MySQL.query.await('SELECT `key`, `value` FROM xs_airdrop_settings') or {}
     local applied = 0
 
     for _, row in ipairs(rows) do
@@ -354,7 +354,7 @@ function Settings.Load()
     end
 
     if applied > 0 then
-        print(('^2[cipher-airdrops]^0 applied %d saved setting%s over config.lua')
+        print(('^2[XS-AirDrops]^0 applied %d saved setting%s over config.lua')
             :format(applied, applied == 1 and '' or 's'))
     end
 end
@@ -400,7 +400,7 @@ function Settings.Set(key, raw, byName)
     if not ok then return false, why end
 
     MySQL.insert.await([[
-        INSERT INTO cipher_airdrop_settings (`key`, `value`, changed_by)
+        INSERT INTO xs_airdrop_settings (`key`, `value`, changed_by)
         VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), changed_by = VALUES(changed_by)
     ]], { key, serialise(entry, value), byName })
@@ -415,7 +415,7 @@ function Settings.Reset(key)
     local entry = byKey[key]
     if not entry then return false, 'Unknown setting' end
 
-    MySQL.query.await('DELETE FROM cipher_airdrop_settings WHERE `key` = ?', { key })
+    MySQL.query.await('DELETE FROM xs_airdrop_settings WHERE `key` = ?', { key })
     writeConfig(key, defaults[key])
     Settings.Push()
 
@@ -489,9 +489,9 @@ local function clientPayload()
 end
 
 function Settings.Push(target)
-    TriggerClientEvent('cipher-airdrops:client:settings', target or -1, clientPayload())
+    TriggerClientEvent('XS-AirDrops:client:settings', target or -1, clientPayload())
 end
 
-RegisterNetEvent('cipher-airdrops:server:requestSettings', function()
+RegisterNetEvent('XS-AirDrops:server:requestSettings', function()
     Settings.Push(source)
 end)

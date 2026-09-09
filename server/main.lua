@@ -17,7 +17,7 @@ Airdrops = {}
 
 local function log(fmt, ...)
     if Config.Debug then
-        print(('^2[cipher-airdrops]^0 ' .. fmt):format(...))
+        print(('^2[XS-AirDrops]^0 ' .. fmt):format(...))
     end
 end
 
@@ -207,7 +207,7 @@ end
 -- Nudges any open admin panel to re-read. Sent to everyone; the client ignores
 -- it unless a panel is open. Must stay above broadcast(), which calls it.
 local function refreshPanels()
-    TriggerClientEvent('cipher-airdrops:client:refreshPanel', -1)
+    TriggerClientEvent('XS-AirDrops:client:refreshPanel', -1)
 end
 
 local function broadcast()
@@ -218,14 +218,14 @@ local function broadcast()
 
     for _, src in ipairs(viewers()) do
         allowed[src] = true
-        TriggerClientEvent('cipher-airdrops:client:sync', src, state)
+        TriggerClientEvent('XS-AirDrops:client:sync', src, state)
     end
 
     if state then
         for _, id in ipairs(GetPlayers()) do
             local src = tonumber(id)
             if src and not allowed[src] then
-                TriggerClientEvent('cipher-airdrops:client:sync', src, nil)
+                TriggerClientEvent('XS-AirDrops:client:sync', src, nil)
             end
         end
     end
@@ -234,7 +234,7 @@ end
 local function announce(message)
     if not Config.Announce.ToEveryone then return end
     for _, src in ipairs(viewers()) do
-        TriggerClientEvent('cipher-airdrops:client:announce', src, message)
+        TriggerClientEvent('XS-AirDrops:client:announce', src, message)
     end
 end
 
@@ -249,7 +249,7 @@ local function webhook(title, description)
             title = title,
             description = description,
             color = 5814783,
-            footer = { text = 'cipher-airdrops' },
+            footer = { text = 'XS-AirDrops' },
         } },
     }), { ['Content-Type'] = 'application/json' })
 end
@@ -270,7 +270,7 @@ local function endDrop(reason)
 
     Data.RecordEnd(Drop.historyId, reason)
 
-    TriggerClientEvent('cipher-airdrops:client:sync', -1, nil)
+    TriggerClientEvent('XS-AirDrops:client:sync', -1, nil)
     Drop = nil
 
     -- Schedule the next one from the moment this finished, not from when it
@@ -300,7 +300,7 @@ local function land()
     if Config.Police.Alert and not Drop.silent then
         SetTimeout((Config.Police.Delay or 45) * 1000, function()
             if Drop and (Drop.state == 'landed' or Drop.state == 'open') then
-                TriggerClientEvent('cipher-airdrops:client:policeAlert', -1, {
+                TriggerClientEvent('XS-AirDrops:client:policeAlert', -1, {
                     coords = Drop.coords,
                     code = Config.Police.Code,
                     title = Config.Police.Title,
@@ -424,7 +424,7 @@ local function nearCrate(src)
     return flat <= reach and drop <= 25.0
 end
 
-RegisterNetEvent('cipher-airdrops:server:beginCrack', function()
+RegisterNetEvent('XS-AirDrops:server:beginCrack', function()
     local src = source
 
     if not Drop or Drop.state ~= 'landed' then
@@ -449,7 +449,7 @@ RegisterNetEvent('cipher-airdrops:server:beginCrack', function()
     log('%s started cracking %s', GetPlayerName(src), Drop.id)
 end)
 
-RegisterNetEvent('cipher-airdrops:server:finishCrack', function()
+RegisterNetEvent('XS-AirDrops:server:finishCrack', function()
     local src = source
     if not Drop or Drop.state ~= 'landed' then return end
     if not canCollect(src) then return end
@@ -543,7 +543,7 @@ function markEmptied()
     log('drop %s emptied — lingering %ds', Drop.id, Config.Drop.EmptyLinger or 60)
 end
 
-RegisterNetEvent('cipher-airdrops:server:loot', function()
+RegisterNetEvent('XS-AirDrops:server:loot', function()
     local src = source
     if not Drop or Drop.state ~= 'open' then return end
     if not nearCrate(src) then return end
@@ -554,7 +554,7 @@ RegisterNetEvent('cipher-airdrops:server:loot', function()
     end
 
     if Inv.CanPrefillStash() then
-        TriggerClientEvent('cipher-airdrops:client:openStash', src, Drop.stashId, {
+        TriggerClientEvent('XS-AirDrops:client:openStash', src, Drop.stashId, {
             slots = Config.Loot.Slots,
             maxWeight = Config.Loot.MaxWeight,
         })
@@ -593,7 +593,7 @@ RegisterNetEvent('cipher-airdrops:server:loot', function()
 end)
 
 -- qb-inventory and ps-inventory open stashes from the server.
-RegisterNetEvent('cipher-airdrops:server:openStash', function(id)
+RegisterNetEvent('XS-AirDrops:server:openStash', function(id)
     local src = source
     if not Drop or Drop.stashId ~= id or Drop.state ~= 'open' then return end
     if not nearCrate(src) then return end
@@ -721,8 +721,8 @@ CreateThread(function()
 end)
 
 -- A player who joins mid-event should see it.
-RegisterNetEvent('cipher-airdrops:server:requestSync', function()
-    TriggerClientEvent('cipher-airdrops:client:sync', source, publicState())
+RegisterNetEvent('XS-AirDrops:server:requestSync', function()
+    TriggerClientEvent('XS-AirDrops:client:sync', source, publicState())
 end)
 
 AddEventHandler('playerDropped', function()
@@ -731,7 +731,7 @@ end)
 
 AddEventHandler('onResourceStop', function(resource)
     if resource == GetCurrentResourceName() and Drop then
-        TriggerClientEvent('cipher-airdrops:client:sync', -1, nil)
+        TriggerClientEvent('XS-AirDrops:client:sync', -1, nil)
     end
 end)
 
@@ -744,7 +744,7 @@ CreateThread(function()
     Settings.Load()
 
     Loot.Validate()
-    print(('^2[cipher-airdrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
+    print(('^2[XS-AirDrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
         GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or '?',
         Framework.name or 'NONE', Inv.name or 'NONE', #Data.Locations()))
 end)

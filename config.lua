@@ -37,7 +37,7 @@ Config.AdminCommand = {
 
     -- Falls back to the framework's own admin check when this is empty.
     -- Otherwise, any of these ace permissions will do.
-    Aces = { 'command.airdrop', 'cipher.airdrops' },
+    Aces = { 'command.airdrop', 'xs.airdrops' },
 }
 
 -- ── The drop itself ──────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ Config.Police = {
 
     Jobs = { 'police', 'sheriff', 'sasp' },
 
-    -- Uses cipher-dispatch when present, then any common dispatch resource,
+    -- Uses XS-Dispatch when present, then any common dispatch resource,
     -- then a plain notification. See client/dispatch.lua.
     Code = '10-66',
     Title = 'Unregistered Cargo Drop',
@@ -243,7 +243,7 @@ Config.Blip = {
 -- Used by the framework bridge to decide who may call a drop by hand.
 -- Any one of these passing is enough.
 Config.Admin = {
-    acePermission = 'cipher.airdrops',
+    acePermission = 'xs.airdrops',
 
     -- Framework permission groups (QBox / QBCore).
     groups = { 'admin', 'god' },

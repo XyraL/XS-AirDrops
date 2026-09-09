@@ -1,4 +1,4 @@
--- Cipher — Airdrops
+-- XS-AirDrops
 -- Run this once before starting the resource. Safe to re-run.
 --
 -- Why there is a database at all, when v1.0 shipped without one: the admin
@@ -11,7 +11,7 @@
 -- tables are empty, they are seeded from it — so a fresh install behaves
 -- exactly as the config says, and the panel takes over from there.
 
-CREATE TABLE IF NOT EXISTS `cipher_airdrop_locations` (
+CREATE TABLE IF NOT EXISTS `xs_airdrop_locations` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `label` VARCHAR(100) NOT NULL,
     `x` FLOAT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `cipher_airdrop_locations` (
     KEY `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_airdrop_tiers` (
+CREATE TABLE IF NOT EXISTS `xs_airdrop_tiers` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(50) NOT NULL UNIQUE,
     `weight` INT NOT NULL DEFAULT 10,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `cipher_airdrop_tiers` (
     KEY `idx_rank` (`rank`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_airdrop_loot` (
+CREATE TABLE IF NOT EXISTS `xs_airdrop_loot` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `tier_id` INT NOT NULL,
     `item` VARCHAR(100) NOT NULL,
@@ -48,13 +48,13 @@ CREATE TABLE IF NOT EXISTS `cipher_airdrop_loot` (
     `enabled` TINYINT(1) NOT NULL DEFAULT 1,
     KEY `idx_tier` (`tier_id`),
     CONSTRAINT `fk_loot_tier` FOREIGN KEY (`tier_id`)
-        REFERENCES `cipher_airdrop_tiers` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_airdrop_tiers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Every drop that has happened. Feeds the panel's history view, and answers
 -- "is this actually being played with" — which is the question that decides
 -- whether the loot tables need tuning.
-CREATE TABLE IF NOT EXISTS `cipher_airdrop_history` (
+CREATE TABLE IF NOT EXISTS `xs_airdrop_history` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `label` VARCHAR(100) NOT NULL,
     `x` FLOAT NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `cipher_airdrop_history` (
 -- config.lua says". That way editing config.lua still works for anything you
 -- have never touched in the panel, and a setting you reset genuinely goes back
 -- to the file's value rather than to a copy of it taken months ago.
-CREATE TABLE IF NOT EXISTS `cipher_airdrop_settings` (
+CREATE TABLE IF NOT EXISTS `xs_airdrop_settings` (
     `key` VARCHAR(64) PRIMARY KEY,
     `value` TEXT NOT NULL,
     `changed_by` VARCHAR(100) DEFAULT NULL,

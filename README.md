@@ -1,12 +1,12 @@
-<h1 align="center">Cipher Airdrops</h1>
+<h1 align="center">XS-AirDrops</h1>
 
 <p align="center">Contested supply drops for <strong>QBox</strong> and <strong>QBCore</strong> — announced, flown in by cargo plane, and cracked open by whoever holds the ground.</p>
 
 <p align="center">
-  <a href="https://github.com/XyraL/cipher-airdrops/releases"><img src="https://img.shields.io/github/v/release/XyraL/cipher-airdrops?style=flat-square&color=f5a524&label=release" alt="Latest release"></a>
+  <a href="https://github.com/XyraL/XS-AirDrops/releases"><img src="https://img.shields.io/github/v/release/XyraL/XS-AirDrops?style=flat-square&color=f5a524&label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/framework-QBox%20%7C%20QBCore-55dcff?style=flat-square" alt="framework">
   <img src="https://img.shields.io/badge/price-free-30d158?style=flat-square" alt="price">
-  <a href="https://xyralscripts.dev/docs-cipher-airdrops"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
+  <a href="https://xyralscripts.dev/docs-xs-airdrops"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
   <a href="https://discord.gg/XRURAw4TM2"><img src="https://img.shields.io/badge/support-discord-5865F2?style=flat-square" alt="support"></a>
 </p>
 
@@ -66,10 +66,10 @@ fight is a better scene than law enforcement waiting at the coordinates.
 
 ## Installation
 
-1. Drop `cipher-airdrops` in your resources folder.
+1. Drop `XS-AirDrops` in your resources folder.
 2. Run `sql/airdrops.sql` against your database. It creates four tables and is
    safe to re-run.
-3. `ensure cipher-airdrops` in your `server.cfg`, after your framework and
+3. `ensure XS-AirDrops` in your `server.cfg`, after your framework and
    inventory.
 
 The ten drop locations and four loot tiers in `config.lua` are copied into those
@@ -229,9 +229,9 @@ ace in `Config.AdminCommand.Aces`. The server console can always call one.
 ## Exports
 
 ```lua
-exports['cipher-airdrops']:IsDropActive()      -- boolean
-exports['cipher-airdrops']:GetDrop()           -- the public state, or nil
-exports['cipher-airdrops']:StartDrop('sandy')  -- start one; returns ok, err
+exports['XS-AirDrops']:IsDropActive()      -- boolean
+exports['XS-AirDrops']:GetDrop()           -- the public state, or nil
+exports['XS-AirDrops']:StartDrop('sandy')  -- start one; returns ok, err
 ```
 
 `GetDrop()` returns what clients are allowed to know, which means the exact
@@ -241,7 +241,7 @@ coordinates only once the crate is on the ground.
 
 ## Works with the rest of the line
 
-If you run **cipher-dispatch**, the police alert becomes a proper dispatch call
+If you run **XS-Dispatch**, the police alert becomes a proper dispatch call
 with a code, a description and a blip, rather than a notification. It falls back
 through ps-dispatch, qs-dispatch, cd_dispatch and core_dispatch, and then to a
 plain notification with a blip — so it always tells somebody.
@@ -269,7 +269,7 @@ each still holding whatever nobody collected.
 
 ---
 
-## The rest of the Cipher line
+## My other scripts
 
 Free, source-available FiveM scripts — [xyralscripts.dev](https://xyralscripts.dev)
 

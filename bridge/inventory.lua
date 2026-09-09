@@ -30,7 +30,7 @@ do
     end
 
     if not Inv.name then
-        print('^1[cipher-airdrops]^0 No supported inventory found. Start one of: ' .. table.concat(DETECT_ORDER, ', '))
+        print('^1[XS-AirDrops]^0 No supported inventory found. Start one of: ' .. table.concat(DETECT_ORDER, ', '))
     end
 end
 
@@ -99,7 +99,7 @@ if IS_SERVER then
         if Inv.name == 'ox_inventory' then
             return exports.ox_inventory:AddItem(src, item, count)
         elseif Inv.name == 'qb-inventory' then
-            return exports['qb-inventory']:AddItem(src, item, count, false, nil, 'cipher-airdrops')
+            return exports['qb-inventory']:AddItem(src, item, count, false, nil, 'XS-AirDrops')
         elseif Inv.name == 'qs-inventory' then
             return exports['qs-inventory']:AddItem(src, item, count, false)
         elseif Inv.name == 'codem-inventory' then
@@ -126,7 +126,7 @@ else
         if Inv.name == 'ox_inventory' then
             exports.ox_inventory:openInventory('stash', id)
         elseif Inv.name == 'qb-inventory' or Inv.name == 'ps-inventory' then
-            TriggerServerEvent('cipher-airdrops:server:openStash', id)
+            TriggerServerEvent('XS-AirDrops:server:openStash', id)
         elseif Inv.name == 'qs-inventory' then
             TriggerServerEvent('inventory:server:OpenInventory', 'stash', id, {
                 maxweight = data.maxWeight or 80000, slots = data.slots or 12,
@@ -140,6 +140,6 @@ else
 end
 
 if Config and Config.Debug then
-    print(('^2[cipher-airdrops]^0 inventory bridge loaded (%s) on %s'):format(
+    print(('^2[XS-AirDrops]^0 inventory bridge loaded (%s) on %s'):format(
         Inv.name or 'none', IS_SERVER and 'server' or 'client'))
 end

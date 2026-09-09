@@ -6,7 +6,7 @@ local panelOpen = false
 local function openPanel()
     -- Asking the server rather than assuming: this is what stops a player who
     -- has found the command from getting a panel at all.
-    local allowed, name = lib.callback.await('cipher-airdrops:server:canAdmin', false)
+    local allowed, name = lib.callback.await('XS-AirDrops:server:canAdmin', false)
     if not allowed then
         Framework.Notify('You do not have permission for that.', 'error')
         return
@@ -48,7 +48,7 @@ AddEventHandler('onResourceStop', function(resource)
 end)
 
 -- Live state pushes, so an admin watching the panel sees a drop land.
-RegisterNetEvent('cipher-airdrops:client:refreshPanel', function()
+RegisterNetEvent('XS-AirDrops:client:refreshPanel', function()
     if panelOpen then SendNUIMessage({ action = 'refreshLive' }) end
 end)
 
@@ -67,7 +67,7 @@ local RELAYS = {
 
 for _, name in ipairs(RELAYS) do
     RegisterNUICallback(name, function(data, cb)
-        cb(lib.callback.await('cipher-airdrops:server:admin:' .. name, false, data) or {})
+        cb(lib.callback.await('XS-AirDrops:server:admin:' .. name, false, data) or {})
     end)
 end
 

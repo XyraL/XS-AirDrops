@@ -20,7 +20,7 @@ function showPanel(name) {
     document.querySelectorAll('.nav-item').forEach(item =>
         item.classList.toggle('active', item.dataset.panel === name));
 
-    // `active`, not `hidden`. The stylesheet this panel borrows from cipher-admin
+    // `active`, not `hidden`. The stylesheet this panel borrows from XS-AdminMenu
     // hides every .panel by default and shows only .panel.active — so toggling
     // `hidden` set the content and left all of it at display:none. Every tab
     // rendered correctly and none of them appeared.
@@ -46,7 +46,7 @@ function openPanel(payload) {
 function closePanel() {
     document.getElementById('admin-overlay').classList.add('hidden');
     closeModal();
-    fetch('https://cipher-airdrops/closePanel', {
+    fetch(`https://${AD_RESOURCE}/closePanel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',

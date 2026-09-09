@@ -6,7 +6,7 @@
 -- resource restart — a crack time changed mid-session would apply on the server
 -- and not in the progress bar the player is watching.
 
-RegisterNetEvent('cipher-airdrops:client:settings', function(values)
+RegisterNetEvent('XS-AirDrops:client:settings', function(values)
     if type(values) ~= 'table' then return end
 
     for key, value in pairs(values) do
@@ -21,5 +21,5 @@ end)
 -- rather than the file's.
 AddEventHandler('onClientResourceStart', function(resource)
     if resource ~= GetCurrentResourceName() then return end
-    TriggerServerEvent('cipher-airdrops:server:requestSettings')
+    TriggerServerEvent('XS-AirDrops:server:requestSettings')
 end)

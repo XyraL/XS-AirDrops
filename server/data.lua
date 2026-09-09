@@ -27,13 +27,13 @@ end
 -- ── Seeding ──────────────────────────────────────────────────────────────────
 
 local function seedLocations()
-    local count = MySQL.scalar.await('SELECT COUNT(*) FROM cipher_airdrop_locations')
+    local count = MySQL.scalar.await('SELECT COUNT(*) FROM xs_airdrop_locations')
     if count and count > 0 then return 0 end
 
     local n = 0
     for _, loc in ipairs(Config.Locations or {}) do
         MySQL.insert.await([[
-            INSERT INTO cipher_airdrop_locations (label, x, y, z, weight, created_by)
+            INSERT INTO xs_airdrop_locations (label, x, y, z, weight, created_by)
             VALUES (?, ?, ?, ?, ?, 'config.lua')
         ]], { loc.label, loc.coords.x, loc.coords.y, loc.coords.z, loc.weight or 5 })
         n = n + 1
@@ -42,7 +42,7 @@ local function seedLocations()
 end
 
 local function seedLoot()
-    local count = MySQL.scalar.await('SELECT COUNT(*) FROM cipher_airdrop_tiers')
+    local count = MySQL.scalar.await('SELECT COUNT(*) FROM xs_airdrop_tiers')
     if count and count > 0 then return 0, 0 end
 
     -- Rank comes from the order in config.lua, which is what "this tier or
@@ -52,14 +52,14 @@ local function seedLoot()
 
     for rank, tier in ipairs(Config.Loot.Tiers or {}) do
         local tierId = MySQL.insert.await([[
-            INSERT INTO cipher_airdrop_tiers (name, weight, colour, rank)
+            INSERT INTO xs_airdrop_tiers (name, weight, colour, rank)
             VALUES (?, ?, ?, ?)
         ]], { tier.name, tier.weight or 10, palette[rank] or '#9aa0a8', rank })
         tiers = tiers + 1
 
         for _, entry in ipairs(tier.items or {}) do
             MySQL.insert.await([[
-                INSERT INTO cipher_airdrop_loot (tier_id, item, min_count, max_count, weight)
+                INSERT INTO xs_airdrop_loot (tier_id, item, min_count, max_count, weight)
                 VALUES (?, ?, ?, ?, ?)
             ]], { tierId, entry.item, entry.min or 1, entry.max or entry.min or 1, entry.weight or 10 })
             items = items + 1
@@ -76,7 +76,7 @@ function Data.Init()
     Data.Invalidate()
 
     if locs > 0 or tiers > 0 then
-        print(('^2[cipher-airdrops]^0 seeded from config.lua: %d locations, %d tiers, %d loot entries')
+        print(('^2[XS-AirDrops]^0 seeded from config.lua: %d locations, %d tiers, %d loot entries')
             :format(locs, tiers, items))
     end
 end
@@ -86,7 +86,7 @@ end
 function Data.Locations(includeDisabled)
     if not cache.locations then
         cache.locations = MySQL.query.await(
-            'SELECT * FROM cipher_airdrop_locations ORDER BY label ASC') or {}
+            'SELECT * FROM xs_airdrop_locations ORDER BY label ASC') or {}
     end
 
     if includeDisabled then return cache.locations end
@@ -102,8 +102,8 @@ end
 -- index comparison exactly as it was when this lived in a Lua table.
 function Data.Tiers(includeDisabled)
     if not cache.tiers then
-        local tiers = MySQL.query.await('SELECT * FROM cipher_airdrop_tiers ORDER BY rank ASC') or {}
-        local loot  = MySQL.query.await('SELECT * FROM cipher_airdrop_loot') or {}
+        local tiers = MySQL.query.await('SELECT * FROM xs_airdrop_tiers ORDER BY rank ASC') or {}
+        local loot  = MySQL.query.await('SELECT * FROM xs_airdrop_loot') or {}
 
         local byTier = {}
         for _, row in ipairs(loot) do
@@ -151,13 +151,13 @@ function Data.SaveLocation(loc, byName)
 
     if loc.id then
         MySQL.update.await([[
-            UPDATE cipher_airdrop_locations
+            UPDATE xs_airdrop_locations
             SET label = ?, x = ?, y = ?, z = ?, weight = ?, radius = ?, enabled = ?
             WHERE id = ?
         ]], { loc.label, loc.x, loc.y, loc.z, weight, radius, loc.enabled and 1 or 0, loc.id })
     else
         MySQL.insert.await([[
-            INSERT INTO cipher_airdrop_locations (label, x, y, z, weight, radius, enabled, created_by)
+            INSERT INTO xs_airdrop_locations (label, x, y, z, weight, radius, enabled, created_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ]], { loc.label, loc.x, loc.y, loc.z, weight, radius, loc.enabled == false and 0 or 1, byName })
     end
@@ -174,15 +174,15 @@ function Data.DeleteLocation(id)
     -- exactly what a new server wants to do, and blocking it is worse than the
     -- thing it was protecting against. The panel says plainly when there are
     -- none left instead.
-    MySQL.query.await('DELETE FROM cipher_airdrop_locations WHERE id = ?', { id })
+    MySQL.query.await('DELETE FROM xs_airdrop_locations WHERE id = ?', { id })
     Data.Invalidate()
     return true
 end
 
 -- Clears the lot. The panel asks twice before calling this.
 function Data.DeleteAllLocations()
-    local count = MySQL.scalar.await('SELECT COUNT(*) FROM cipher_airdrop_locations') or 0
-    MySQL.query.await('DELETE FROM cipher_airdrop_locations')
+    local count = MySQL.scalar.await('SELECT COUNT(*) FROM xs_airdrop_locations') or 0
+    MySQL.query.await('DELETE FROM xs_airdrop_locations')
     Data.Invalidate()
     return true, count
 end
@@ -192,14 +192,14 @@ function Data.SaveTier(tier)
 
     if tier.id then
         MySQL.update.await([[
-            UPDATE cipher_airdrop_tiers SET name = ?, weight = ?, colour = ?, rank = ?, enabled = ?
+            UPDATE xs_airdrop_tiers SET name = ?, weight = ?, colour = ?, rank = ?, enabled = ?
             WHERE id = ?
         ]], { tier.name, math.max(1, math.floor(tonumber(tier.weight) or 10)),
               tier.colour, math.floor(tonumber(tier.rank) or 0), tier.enabled and 1 or 0, tier.id })
     else
         local ok = pcall(function()
             MySQL.insert.await([[
-                INSERT INTO cipher_airdrop_tiers (name, weight, colour, rank)
+                INSERT INTO xs_airdrop_tiers (name, weight, colour, rank)
                 VALUES (?, ?, ?, ?)
             ]], { tier.name, math.max(1, math.floor(tonumber(tier.weight) or 10)),
                   tier.colour or '#9aa0a8', math.floor(tonumber(tier.rank) or 99) })
@@ -214,7 +214,7 @@ end
 function Data.DeleteTier(id)
     if not id then return false, 'No tier' end
     -- Loot rows go with it: the foreign key cascades.
-    MySQL.query.await('DELETE FROM cipher_airdrop_tiers WHERE id = ?', { id })
+    MySQL.query.await('DELETE FROM xs_airdrop_tiers WHERE id = ?', { id })
     Data.Invalidate()
     return true
 end
@@ -229,13 +229,13 @@ function Data.SaveLoot(entry)
 
     if entry.id then
         MySQL.update.await([[
-            UPDATE cipher_airdrop_loot
+            UPDATE xs_airdrop_loot
             SET tier_id = ?, item = ?, min_count = ?, max_count = ?, weight = ?, enabled = ?
             WHERE id = ?
         ]], { entry.tier_id, entry.item, min, max, weight, entry.enabled and 1 or 0, entry.id })
     else
         MySQL.insert.await([[
-            INSERT INTO cipher_airdrop_loot (tier_id, item, min_count, max_count, weight)
+            INSERT INTO xs_airdrop_loot (tier_id, item, min_count, max_count, weight)
             VALUES (?, ?, ?, ?, ?)
         ]], { entry.tier_id, entry.item, min, max, weight })
     end
@@ -246,7 +246,7 @@ end
 
 function Data.DeleteLoot(id)
     if not id then return false, 'No item' end
-    MySQL.query.await('DELETE FROM cipher_airdrop_loot WHERE id = ?', { id })
+    MySQL.query.await('DELETE FROM xs_airdrop_loot WHERE id = ?', { id })
     Data.Invalidate()
     return true
 end
@@ -255,7 +255,7 @@ end
 
 function Data.RecordStart(drop, calledBy)
     return MySQL.insert.await([[
-        INSERT INTO cipher_airdrop_history (label, x, y, z, called_by)
+        INSERT INTO xs_airdrop_history (label, x, y, z, called_by)
         VALUES (?, ?, ?, ?, ?)
     ]], { drop.label, drop.coords.x, drop.coords.y, drop.coords.z, calledBy })
 end
@@ -263,7 +263,7 @@ end
 function Data.RecordCrack(historyId, citizenid, name, contents)
     if not historyId then return end
     MySQL.update.await([[
-        UPDATE cipher_airdrop_history
+        UPDATE xs_airdrop_history
         SET cracked_by = ?, cracked_by_name = ?, contents = ?
         WHERE id = ?
     ]], { citizenid, name, json.encode(contents or {}), historyId })
@@ -272,7 +272,7 @@ end
 function Data.RecordEnd(historyId, outcome)
     if not historyId then return end
     MySQL.update.await([[
-        UPDATE cipher_airdrop_history SET outcome = ?, ended_at = CURRENT_TIMESTAMP WHERE id = ?
+        UPDATE xs_airdrop_history SET outcome = ?, ended_at = CURRENT_TIMESTAMP WHERE id = ?
     ]], { outcome, historyId })
 end
 
@@ -283,7 +283,7 @@ function Data.History(limit)
     -- all — so a client-side subtraction is wrong by the offset between them.
     return MySQL.query.await([[
         SELECT *, TIMESTAMPDIFF(SECOND, started_at, NOW()) AS age_seconds
-        FROM cipher_airdrop_history
+        FROM xs_airdrop_history
         ORDER BY started_at DESC LIMIT ?
     ]], { limit or 50 }) or {}
 end
@@ -294,7 +294,7 @@ function Data.Stats()
             COUNT(*) AS total,
             SUM(CASE WHEN cracked_by IS NOT NULL THEN 1 ELSE 0 END) AS cracked,
             SUM(CASE WHEN outcome = 'abandoned' THEN 1 ELSE 0 END) AS abandoned
-        FROM cipher_airdrop_history
+        FROM xs_airdrop_history
     ]])
     return row or { total = 0, cracked = 0, abandoned = 0 }
 end

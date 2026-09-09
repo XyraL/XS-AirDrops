@@ -30,7 +30,7 @@ local function loadModel(model)
     if not IsModelValid(hash) then
         if not warnedModel[hash] then
             warnedModel[hash] = true
-            print(('^1[cipher-airdrops]^0 "%s" is not a valid model — check Config.Delivery.')
+            print(('^1[XS-AirDrops]^0 "%s" is not a valid model — check Config.Delivery.')
                 :format(tostring(model)))
         end
         return nil
@@ -56,7 +56,7 @@ function AirdropSpawnCrate(coords)
         if not hash then
             hash = loadModel(CRATE_FALLBACK)
             if not hash then
-                print('^1[cipher-airdrops]^0 no crate model would load — the drop has nothing to open.')
+                print('^1[XS-AirDrops]^0 no crate model would load — the drop has nothing to open.')
                 return
             end
         end

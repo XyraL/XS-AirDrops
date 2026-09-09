@@ -3,7 +3,7 @@
 
 /* ── Design Tokens ──
    "Command deck": neutral graphite with a red authority accent. Deliberately
-   unlike every other Cipher script — trucking is amber/teal industrial, the
+   unlike every other XS script — trucking is amber/teal industrial, the
    drugs ops console is graphite/cyan — because staff tooling should never be
    mistakable for player tooling at a glance.
 
@@ -256,7 +256,7 @@ html, body {
     border-left: 1px solid var(--accent);
 }
 
-/* Faint scanlines, matching the treatment in `cipher` and cipher-trucking so
+/* Faint scanlines, matching the treatment in `XS-CriminalTablet` and XS-Trucking so
    the suite shares a texture even where the palettes differ. Non-interactive
    and very low contrast — it should register as screen grain, not stripes. */
 #admin-wrapper::after {
@@ -1239,8 +1239,8 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════════════════
    Airdrops components
 
-   The rest of this stylesheet came from cipher-admin so the two panels look
-   like the same product. These are the pieces airdrops needs that cipher-admin
+   The rest of this stylesheet came from XS-AdminMenu so the two panels look
+   like the same product. These are the pieces airdrops needs that XS-AdminMenu
    never had a use for — panel headers with a subtitle, inline alerts, labelled
    form fields, toasts and the loot-tier dot.
 

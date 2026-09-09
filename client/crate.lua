@@ -32,7 +32,7 @@ local function crackCrate()
     if busy then return end
     busy = true
 
-    TriggerServerEvent('cipher-airdrops:server:beginCrack')
+    TriggerServerEvent('XS-AirDrops:server:beginCrack')
 
     local seconds = Config.Drop.CrackTime or 25
 
@@ -60,12 +60,12 @@ local function crackCrate()
         return
     end
 
-    TriggerServerEvent('cipher-airdrops:server:finishCrack')
+    TriggerServerEvent('XS-AirDrops:server:finishCrack')
 end
 
 local function lootCrate()
     if busy then return end
-    TriggerServerEvent('cipher-airdrops:server:loot')
+    TriggerServerEvent('XS-AirDrops:server:loot')
 end
 
 -- Prompt loop. Only runs while a crate is actually on the ground, and only
@@ -111,7 +111,7 @@ CreateThread(function()
     -- and filtering to the one crate that is actually the drop.
     exports.ox_target:addModel(Config.Delivery.CrateModel, {
         {
-            name = 'cipher_airdrop_crack',
+            name = 'xs_airdrop_crack',
             label = 'Force the crate',
             icon = 'fa-solid fa-screwdriver-wrench',
             distance = Config.Drop.CrackDistance or 5.0,
@@ -122,7 +122,7 @@ CreateThread(function()
             onSelect = crackCrate,
         },
         {
-            name = 'cipher_airdrop_loot',
+            name = 'xs_airdrop_loot',
             label = 'Search the crate',
             icon = 'fa-solid fa-box-open',
             distance = Config.Drop.CrackDistance or 5.0,

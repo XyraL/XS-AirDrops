@@ -2,15 +2,15 @@ fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
 
-name 'cipher-airdrops'
+name 'XS-AirDrops'
 author 'XyraL'
-description 'Cipher — Airdrops. Contested supply drops: announced, flown in, cracked open and fought over. Standalone for QBox/QBCore.'
+description 'Contested supply drops: announced, flown in, cracked open and fought over. Standalone for QBox/QBCore.'
 version '1.0.0'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 -- Inventory: ox_inventory / qb-inventory / qs-inventory / codem-inventory /
 -- core_inventory / ps-inventory — bridge auto-detects, force via Config.Bridges.
--- Dispatch: cipher-dispatch / ps-dispatch / qs-dispatch / cd_dispatch /
+-- Dispatch: XS-Dispatch / ps-dispatch / qs-dispatch / cd_dispatch /
 -- core_dispatch, with a plain-notification fallback.
 dependencies {
     'ox_lib',

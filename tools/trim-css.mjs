@@ -1,7 +1,7 @@
 // Removes rule blocks whose selectors only ever name classes this resource
 // does not use.
 //
-// The stylesheet is a copy of cipher-admin's and arrived carrying three
+// The stylesheet is a copy of XS-AdminMenu's and arrived carrying three
 // quarters of a different application. This is a one-shot cleanup, kept in the
 // repo so the next person can see how the trim was decided rather than
 // wondering what was cut.

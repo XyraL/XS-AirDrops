@@ -5,6 +5,10 @@
 // table is exactly the same shape of problem: an item name is free text typed
 // by one admin and rendered into another admin's panel.
 
+// The NUI host must equal the resource folder name exactly, and that name is
+// case-sensitive on Linux servers. Ask the game for it rather than hardcoding.
+const AD_RESOURCE = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'XS-AirDrops';
+
 function esc(value) {
     if (value === null || value === undefined) return '';
     return String(value)
@@ -20,7 +24,7 @@ function esc(value) {
 // so throwing here would just move the check.
 async function nui(endpoint, payload = {}) {
     try {
-        const res = await fetch(`https://cipher-airdrops/${endpoint}`, {
+        const res = await fetch(`https://${AD_RESOURCE}/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
