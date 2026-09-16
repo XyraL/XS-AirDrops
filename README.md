@@ -134,6 +134,34 @@ Loot is rolled **when the crate is cracked** — never when it is announced, and
 never on a client. If the contents can be known before the fight, people decide
 whether the fight is worth having, and the fight is the product.
 
+**The loot table uses your server's items.** Everything in the stock tiers is
+something QBCore already ships — `bandage`, `water_bottle`, `sandwich`,
+`plastic`, `metalscrap`, `lockpick`, `radio`, `firstaid`, `steel`, `goldbar`,
+the weapons and their ammo. If a name does not exist on your server the roll is
+skipped, so check the list against your own items before you go live.
+
+Two are not standard, and both ship with images in `inventory_images/`:
+
+| Item | Tier | Add it as |
+|---|---|---|
+| `thermite` | Rare | `{ label = 'Thermite', weight = 900, stack = true }` |
+| `trojan_usb` | Rare | `{ label = 'Trojan USB', weight = 100, stack = true }` |
+
+Drop `thermite.png` and `trojan_usb.png` into your inventory's image folder:
+
+| Inventory | Where |
+|---|---|
+| ox_inventory | `ox_inventory/web/images/` |
+| qb-inventory | `qb-inventory/html/images/` |
+| ps-inventory | `ps-inventory/html/images/` |
+| qs-inventory | `qs-inventory/html/images/` |
+| codem-inventory | `codem-inventory/html/itemimages/` |
+| core_inventory | `core_inventory/html/img/` |
+
+If yours is not listed, put them wherever its existing item PNGs already live.
+Or cut both rows out of `Config.Loot` and use items you already have — nothing
+else in the script references them.
+
 ### Locations
 
 Pick open ground with **more than one approach**. A spot with a single road in
