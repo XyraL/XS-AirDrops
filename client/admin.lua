@@ -47,6 +47,10 @@ AddEventHandler('onResourceStop', function(resource)
     if panelOpen then closePanel() end
 end)
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    if panelOpen then closePanel() end
+end)
+
 -- Live state pushes, so an admin watching the panel sees a drop land.
 RegisterNetEvent('XS-AirDrops:client:refreshPanel', function()
     if panelOpen then SendNUIMessage({ action = 'refreshLive' }) end

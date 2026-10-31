@@ -68,6 +68,10 @@ local function lootCrate()
     TriggerServerEvent('XS-AirDrops:server:loot')
 end
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    if busy and lib.progressActive() then lib.cancelProgress() end
+end)
+
 -- Prompt loop. Only runs while a crate is actually on the ground, and only
 -- does per-frame work when the player is close enough to care.
 CreateThread(function()

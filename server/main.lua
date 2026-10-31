@@ -725,8 +725,16 @@ RegisterNetEvent('XS-AirDrops:server:requestSync', function()
     TriggerClientEvent('XS-AirDrops:client:sync', source, publicState())
 end)
 
+local function leave(src)
+    if Drop and Drop.cracks then Drop.cracks[src] = nil end
+end
+
 AddEventHandler('playerDropped', function()
-    if Drop and Drop.cracks then Drop.cracks[source] = nil end
+    leave(source)
+end)
+
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+    leave(tonumber(src) or source)
 end)
 
 AddEventHandler('onResourceStop', function(resource)

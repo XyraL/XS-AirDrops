@@ -5,7 +5,7 @@ lua54 'yes'
 name 'XS-AirDrops'
 author 'XyraL'
 description 'Contested supply drops: announced, flown in, cracked open and fought over. Standalone for QBox/QBCore.'
-version '1.0.0'
+version '1.0.1'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 -- Inventory: ox_inventory / qb-inventory / qs-inventory / codem-inventory /
