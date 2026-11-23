@@ -1,204 +1,224 @@
--- The plane, the parachute and the crate.
---
--- All of it is local to each client. Nothing here is networked, so there is no
--- entity for another player to own, damage or delete, and two clients rendering
--- slightly different smoke is a cost worth paying for that.
+local FALLBACK = 'prop_mil_crate_01'
+local CHUTE = 'p_cargo_chute_s'
+local warned = {}
 
--- Particle assets have to be requested before use. Without this,
--- UseParticleFxAssetNextCall silently draws nothing, which looks exactly like
--- the effect not existing.
 local function ensurePtfx()
     if HasNamedPtfxAssetLoaded('core') then return true end
-
     RequestNamedPtfxAsset('core')
     local deadline = GetGameTimer() + 5000
-    while not HasNamedPtfxAssetLoaded('core') and GetGameTimer() < deadline do
-        Wait(50)
-    end
-
+    while not HasNamedPtfxAssetLoaded('core') and GetGameTimer() < deadline do Wait(50) end
     return HasNamedPtfxAssetLoaded('core')
 end
 
-local warnedModel = {}
-
-local function loadModel(model)
+function AirdropLoadModel(model)
+    if not model or model == '' then return nil end
     local hash = type(model) == 'number' and model or joaat(model)
-
-    -- A bad model name used to return nil here and the caller gave up quietly,
-    -- which means no crate spawns and the drop looks like it simply does not
-    -- work. Say which model, once.
     if not IsModelValid(hash) then
-        if not warnedModel[hash] then
-            warnedModel[hash] = true
-            print(('^1[XS-AirDrops]^0 "%s" is not a valid model — check Config.Delivery.')
-                :format(tostring(model)))
+        if not warned[hash] then
+            warned[hash] = true
+            print(('^1[XS-AirDrops]^0 "%s" is not a valid model. Check the crate type in /airdrops.'):format(tostring(model)))
         end
         return nil
     end
-
     RequestModel(hash)
     local deadline = GetGameTimer() + 10000
-    while not HasModelLoaded(hash) and GetGameTimer() < deadline do
-        Wait(50)
-    end
-
+    while not HasModelLoaded(hash) and GetGameTimer() < deadline do Wait(50) end
     return HasModelLoaded(hash) and hash or nil
 end
 
--- Spawns the crate the player can walk up to. Local, unnetworked, frozen.
--- Used when the configured model will not load, so a drop is never invisible.
-local CRATE_FALLBACK = 'prop_mil_crate_01'
+function AirdropRemoveCrate(e)
+    e.gen = (e.gen or 0) + 1
+    if e.prop then
+        if CrateTargetRemove then CrateTargetRemove(e) end
+        if DoesEntityExist(e.prop) then DeleteEntity(e.prop) end
+    end
+    e.prop, e.propCoords, e.placed, e.spawning = nil, nil, nil, nil
+end
 
-function AirdropSpawnCrate(coords)
+function AirdropSpawnCrate(e)
+    if e.spawning or e.prop then return end
+    e.spawning = true
+    local gen = e.gen or 0
     CreateThread(function()
-        local hash = loadModel(Config.Delivery.CrateModel)
-
+        local hash = AirdropLoadModel(e.data.crate.model) or AirdropLoadModel(FALLBACK)
+        e.spawning = false
         if not hash then
-            hash = loadModel(CRATE_FALLBACK)
-            if not hash then
-                print('^1[XS-AirDrops]^0 no crate model would load — the drop has nothing to open.')
-                return
-            end
+            print('^1[XS-AirDrops]^0 no crate model would load, so this drop has nothing to open.')
+            return
         end
-
-        local ground, z = GetGroundZFor_3dCoord(coords.x, coords.y, coords.z + 5.0, false)
-        local placeZ = ground and z or coords.z
-
-        local prop = CreateObject(hash, coords.x, coords.y, placeZ, false, false, false)
-        PlaceObjectOnGroundProperly(prop)
-        FreezeEntityPosition(prop, true)
+        if Airdrop.drops[e.id] ~= e or (e.gen or 0) ~= gen or e.prop then
+            SetModelAsNoLongerNeeded(hash)
+            return
+        end
+        local c = e.data.coords
+        local prop = CreateObject(hash, c.x, c.y, c.z, false, false, false)
         SetEntityInvincible(prop, true)
+        FreezeEntityPosition(prop, true)
         SetModelAsNoLongerNeeded(hash)
-
-        Airdrop.prop = prop
-
-        -- Where it really ended up after the ground snap, which the reach check
-        -- measures against.
-        Airdrop.propCoords = GetEntityCoords(prop)
+        e.prop = prop
+        e.propCoords = GetEntityCoords(prop)
+        if CrateTargetAdd then CrateTargetAdd(e) end
     end)
 end
 
--- Smoke and a flare so the crate is findable from a distance once you are in
--- the right area. Runs for as long as the drop is on the ground.
+local function settle(e)
+    if e.placed or not e.prop or not DoesEntityExist(e.prop) then return end
+    if not HasCollisionLoadedAroundEntity(e.prop) then return end
+    local c = e.data.coords
+    local ray = StartExpensiveSynchronousShapeTestLosProbe(c.x, c.y, c.z + 1.5, c.x, c.y, c.z - 8.0, 1 + 16, e.prop, 4)
+    local _, hit, at = GetShapeTestResult(ray)
+    if hit == true or hit == 1 then
+        SetEntityCoords(e.prop, at.x, at.y, at.z, false, false, false, false)
+    end
+    PlaceObjectOnGroundProperly(e.prop)
+    FreezeEntityPosition(e.prop, true)
+    e.propCoords = GetEntityCoords(e.prop)
+    e.placed = true
+end
+
 CreateThread(function()
     while true do
         local wait = 1000
-        local data = Airdrop.data
-
-        if data and (data.state == 'landed' or data.state == 'open') and data.coords then
-            local player = GetEntityCoords(PlayerPedId())
-            local dist = #(player - vector3(data.coords.x, data.coords.y, data.coords.z))
-
-            if dist < 300.0 and ensurePtfx() then
-                -- One puff every 400ms rather than every frame: this is a
-                -- landmark, not a fire, and per-frame particles at a busy drop
-                -- are a measurable frame cost for no visual gain.
-                wait = 400
-
-                UseParticleFxAssetNextCall('core')
-                StartParticleFxNonLoopedAtCoord(
-                    'exp_grd_flare',
-                    data.coords.x, data.coords.y, data.coords.z + 0.4,
-                    0.0, 0.0, 0.0, 1.4, false, false, false)
-
-                DrawLightWithRange(
-                    data.coords.x, data.coords.y, data.coords.z + 1.0,
-                    255, 120, 40, 8.0, 2.0)
+        local pos = GetEntityCoords(PlayerPedId())
+        local now = GetGameTimer()
+        for _, e in pairs(Airdrop.drops) do
+            local data = e.data
+            if data and (data.state == 'landed' or data.state == 'open') then
+                local c = e.propCoords or data.coords
+                local dist = #(pos - c)
+                if dist < 160.0 then settle(e) end
+                if dist < 320.0 and not data.emptied and (data.crate.flare or data.crate.smoke) and ensurePtfx() then
+                    wait = math.min(wait, 200)
+                    if data.crate.flare and now >= (e.flareAt or 0) then
+                        e.flareAt = now + 400
+                        UseParticleFxAssetNextCall('core')
+                        StartParticleFxNonLoopedAtCoord('exp_grd_flare', c.x, c.y, c.z + 0.4, 0.0, 0.0, 0.0, 1.4, false, false, false)
+                    end
+                    if data.crate.smoke and now >= (e.smokeAt or 0) then
+                        e.smokeAt = now + 2500
+                        UseParticleFxAssetNextCall('core')
+                        StartParticleFxNonLoopedAtCoord('exp_grd_grenade_smoke', c.x, c.y, c.z + 0.6, 0.0, 0.0, 0.0, 1.0, false, false, false)
+                    end
+                end
             end
         end
-
         Wait(wait)
     end
 end)
 
--- The flyover. Cosmetic: the server lands the crate on its own schedule, so a
--- client that never renders this still gets the drop.
-function AirdropFlyover(target)
-    CreateThread(function()
-        local planeHash = loadModel(Config.Delivery.PlaneModel)
-        if not planeHash then return end
-
-        local alt = Config.Delivery.Altitude or 320.0
-        local out = Config.Delivery.SpawnDistance or 900.0
-
-        -- Approach on a random bearing so the plane does not always arrive from
-        -- the same direction at the same place.
-        local bearing = math.random() * math.pi * 2
-        local startX = target.x + math.cos(bearing) * out
-        local startY = target.y + math.sin(bearing) * out
-        local endX   = target.x - math.cos(bearing) * out
-        local endY   = target.y - math.sin(bearing) * out
-
-        local plane = CreateVehicle(planeHash, startX, startY, alt, 0.0, false, false)
-        SetEntityInvincible(plane, true)
-        SetVehicleEngineOn(plane, true, true, false)
-        SetEntityHeading(plane, math.deg(bearing) + 90.0)
-        SetModelAsNoLongerNeeded(planeHash)
-
-        -- Flown by moving it rather than by a pilot ped: no ped to sync, no AI
-        -- deciding to land somewhere else, and it cannot be shot down.
-        local speed = Config.Delivery.PlaneSpeed or 90.0
-        local dropped = false
-        local travelled = 0.0
-        local total = #(vector3(endX, endY, alt) - vector3(startX, startY, alt))
-
-        while travelled < total do
-            local step = speed * 0.05
-            travelled = travelled + step
-
-            local t = travelled / total
-            local x = startX + (endX - startX) * t
-            local y = startY + (endY - startY) * t
-
-            SetEntityCoordsNoOffset(plane, x, y, alt, true, true, true)
-
-            -- Release roughly overhead.
-            if not dropped and t >= 0.5 then
-                dropped = true
-                AirdropParachute(vector3(x, y, alt), target)
+CreateThread(function()
+    while true do
+        local wait = 1000
+        local pos = GetEntityCoords(PlayerPedId())
+        for _, e in pairs(Airdrop.drops) do
+            local data = e.data
+            if data and data.crate and data.crate.flare and not data.emptied and (data.state == 'landed' or data.state == 'open') then
+                local c = e.propCoords or data.coords
+                if #(pos - c) < 320.0 then
+                    wait = 0
+                    DrawLightWithRange(c.x, c.y, c.z + 1.0, 255, 120, 40, 8.0, 2.0)
+                end
             end
+        end
+        Wait(wait)
+    end
+end)
 
-            Wait(50)
+local function parachute(e, from)
+    CreateThread(function()
+        local crate = e.data.crate
+        local hash = AirdropLoadModel(crate.model) or AirdropLoadModel(FALLBACK)
+        if not hash then return end
+        local target = e.data.coords
+        local box = CreateObject(hash, from.x, from.y, from.z, false, false, false)
+        SetEntityCollision(box, false, false)
+        SetEntityInvincible(box, true)
+        SetModelAsNoLongerNeeded(hash)
+
+        local chute
+        if crate.parachute then
+            local chuteHash = AirdropLoadModel(CHUTE)
+            if chuteHash then
+                chute = CreateObject(chuteHash, from.x, from.y, from.z, false, false, false)
+                SetEntityCollision(chute, false, false)
+                AttachEntityToEntity(chute, box, 0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, false, false, false, false, 2, true)
+                SetModelAsNoLongerNeeded(chuteHash)
+                RequestAnimDict(CHUTE)
+                local until_ = GetGameTimer() + 1000
+                while not HasAnimDictLoaded(CHUTE) and GetGameTimer() < until_ do Wait(10) end
+                if HasAnimDictLoaded(CHUTE) then
+                    PlayEntityAnim(chute, 'p_cargo_chute_s_deploy', CHUTE, 1000.0, false, true, false, 0.0, 0)
+                end
+            end
         end
 
-        if DoesEntityExist(plane) then DeleteEntity(plane) end
+        local speed = crate.parachute and Util.FALL_CHUTE or Util.FALL_FREE
+        local z = from.z
+        local last = GetGameTimer()
+        local puff = 0
+        while z > target.z + 0.6 and Airdrop.drops[e.id] == e and e.data.state == 'inbound' and DoesEntityExist(box) do
+            local now = GetGameTimer()
+            z = z - speed * ((now - last) / 1000)
+            last = now
+            SetEntityCoordsNoOffset(box, target.x, target.y, math.max(z, target.z + 0.6), false, false, false)
+            SetEntityRotation(box, 0.0, 0.0, (now / 40) % 360, 2, true)
+            if crate.flare and now >= puff and ensurePtfx() then
+                puff = now + 250
+                UseParticleFxAssetNextCall('core')
+                StartParticleFxNonLoopedAtCoord('exp_grd_flare', target.x, target.y, z, 0.0, 0.0, 0.0, 0.6, false, false, false)
+            end
+            Wait(0)
+        end
+
+        while Airdrop.drops[e.id] == e and e.data.state == 'inbound' do Wait(100) end
+        if chute and DoesEntityExist(chute) then DeleteEntity(chute) end
+        if DoesEntityExist(box) then DeleteEntity(box) end
     end)
 end
 
--- A visual crate descending under a chute. Purely for show — the real crate is
--- created by the server telling everyone it has landed.
-function AirdropParachute(from, target)
+function AirdropFlyover(e)
     CreateThread(function()
-        local hash = loadModel(Config.Delivery.CrateModel)
-        if not hash then return end
+        local data = e.data
+        local crate = data.crate
+        local target = data.coords
+        local alt = target.z + (crate.altitude or 320.0)
+        local out = (Config.Delivery.SpawnDistance or 900.0) + 0.0
+        local speed = math.max(10.0, (Config.Delivery.PlaneSpeed or 90.0) + 0.0)
+        local heading = (data.heading or 0) + 0.0
+        local h = math.rad(heading)
+        local dir = vector3(-math.sin(h), math.cos(h), 0.0)
+        local start = vector3(target.x, target.y, alt) - dir * out
 
-        local crate = CreateObject(hash, from.x, from.y, from.z, false, false, false)
-        SetEntityCollision(crate, false, false)
-        SetModelAsNoLongerNeeded(hash)
-
-        local z = from.z
-        local groundZ = target.z
-
-        while z > groundZ + 1.0 and DoesEntityExist(crate) do
-            z = z - 1.2
-
-            -- Drift toward the real landing spot as it falls, so the visual
-            -- ends where the actual crate is rather than somewhere near it.
-            local pos = GetEntityCoords(crate)
-            local nx = pos.x + (target.x - pos.x) * 0.05
-            local ny = pos.y + (target.y - pos.y) * 0.05
-
-            SetEntityCoordsNoOffset(crate, nx, ny, z, true, true, true)
-            SetEntityRotation(crate, 0.0, 0.0, (GetGameTimer() / 20) % 360, 2, true)
-
-            if ensurePtfx() then
-                UseParticleFxAssetNextCall('core')
-                StartParticleFxNonLoopedAtCoord('exp_grd_flare', nx, ny, z, 0.0, 0.0, 0.0, 0.6, false, false, false)
-            end
-
-            Wait(50)
+        local planeHash = AirdropLoadModel(crate.plane)
+        local plane
+        if planeHash then
+            plane = CreateVehicle(planeHash, start.x, start.y, start.z, heading, false, false)
+            SetEntityInvincible(plane, true)
+            SetEntityCollision(plane, false, false)
+            SetVehicleEngineOn(plane, true, true, false)
+            SetModelAsNoLongerNeeded(planeHash)
         end
 
-        if DoesEntityExist(crate) then DeleteEntity(crate) end
+        local total = out * 2.0
+        local travelled = 0.0
+        local dropped = false
+        local last = GetGameTimer()
+        while travelled < total and Airdrop.drops[e.id] == e do
+            local now = GetGameTimer()
+            travelled = travelled + speed * ((now - last) / 1000)
+            last = now
+            if plane and DoesEntityExist(plane) then
+                local pos = start + dir * travelled
+                SetEntityCoordsNoOffset(plane, pos.x, pos.y, pos.z, false, false, false)
+                SetEntityHeading(plane, heading)
+            end
+            if not dropped and travelled >= out then
+                dropped = true
+                if e.data.state == 'inbound' then parachute(e, vector3(target.x, target.y, alt - 6.0)) end
+            end
+            Wait(0)
+        end
+
+        if plane and DoesEntityExist(plane) then DeleteEntity(plane) end
     end)
 end

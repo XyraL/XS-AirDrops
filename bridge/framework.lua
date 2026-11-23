@@ -1,10 +1,3 @@
--- Patching the registrar rather than each call site gives every NUI callback
--- in the resource two guarantees, including any added later:
---
--- 1. Each handler runs in its own thread. FiveM will not dispatch the next
---    NUI callback while the current one is still yielding.
--- 2. A nil payload is sent as `false`. cb(nil) sends no response body at all,
---    leaving the page's fetch pending forever.
 if not IsDuplicityVersion() and type(RegisterNUICallback) == 'function' then
     local _registerNUI = RegisterNUICallback
 
@@ -20,23 +13,8 @@ if not IsDuplicityVersion() and type(RegisterNUICallback) == 'function' then
     end
 end
 
--- ─────────────────────────────────────────────────────────────
--- Framework bridge
--- Auto-detects QBox (qbx_core) or QBCore (qb-core) and exposes ONE API
--- so the rest of the resource never branches on framework. ox_lib and
--- oxmysql are used directly elsewhere since both frameworks ship with them.
--- Force a backend via Config.Bridges.framework.
--- ─────────────────────────────────────────────────────────────
 Framework = { name = nil, core = nil }
 
--- config.lua is a shared_script sitting next to @ox_lib/init.lua. If ox_lib has
--- not started yet, that whole block can fail to run, config.lua never executes,
--- and every file after it sees Config as nil.
---
--- Without this you get three "attempt to index a nil value (global 'Config')"
--- errors pointing at the bridges and server/main, none of which is the actual
--- problem. This is the first file to load in both contexts, so it is where the
--- real cause gets named.
 if not Config then
     print(('^1[XS-AirDrops]^0 config.lua did not load, so this resource cannot start.\n'
         .. '  Almost always start order. In server.cfg, these must come first:\n'
@@ -48,9 +26,9 @@ end
 
 local forced = Config.Bridges and Config.Bridges.framework or 'auto'
 
-if forced == 'qbox' or (forced == 'auto' and GetResourceState('qbx_core') == 'started') then
+if forced == 'qbox' or forced == 'qbx_core' or (forced == 'auto' and GetResourceState('qbx_core') == 'started') then
     Framework.name = 'qbox'
-elseif forced == 'qbcore' or (forced == 'auto' and GetResourceState('qb-core') == 'started') then
+elseif forced == 'qbcore' or forced == 'qb-core' or (forced == 'auto' and GetResourceState('qb-core') == 'started') then
     Framework.name = 'qbcore'
     Framework.core = exports['qb-core']:GetCoreObject()
 else
@@ -60,7 +38,6 @@ end
 local IS_SERVER = IsDuplicityVersion()
 
 if IS_SERVER then
-    -- ── Player lookups ──────────────────────────────────────
     function Framework.GetPlayer(src)
         if Framework.name == 'qbox' then
             return exports.qbx_core:GetPlayer(src)
@@ -77,14 +54,15 @@ if IS_SERVER then
     function Framework.GetName(src)
         local player = Framework.GetPlayer(src)
         if not player then return nil end
-        local ci = player.PlayerData.charinfo
-        return ('%s %s'):format(ci.firstname, ci.lastname)
+        local ci = player.PlayerData.charinfo or {}
+        if not ci.firstname then return nil end
+        return ('%s %s'):format(ci.firstname, ci.lastname or '')
     end
 
     function Framework.GetJob(src)
         local player = Framework.GetPlayer(src)
         if not player then return nil end
-        local j = player.PlayerData.job
+        local j = player.PlayerData.job or {}
         return {
             name    = j.name,
             grade   = (type(j.grade) == 'table') and j.grade.level or j.grade,
@@ -93,9 +71,6 @@ if IS_SERVER then
         }
     end
 
-    -- Gangs, for access rules that key on them. Both frameworks keep gang
-    -- alongside job in PlayerData; a character with no gang returns nil rather
-    -- than the "none" placeholder QBCore uses, so callers can test it plainly.
     function Framework.GetGang(src)
         local player = Framework.GetPlayer(src)
         if not player then return nil end
@@ -110,65 +85,47 @@ if IS_SERVER then
         }
     end
 
-    -- Online src for a citizenid, or nil.
-    function Framework.GetPlayerByCitizenId(citizenid)
-        if Framework.name == 'qbox' then
-            local p = exports.qbx_core:GetPlayerByCitizenId(citizenid)
-            return p and p.PlayerData.source or nil
-        elseif Framework.core then
-            local p = Framework.core.Functions.GetPlayerByCitizenId(citizenid)
-            return p and p.PlayerData.source or nil
-        end
-    end
-
-    -- "First Last" for a citizenid (online or from the DB). charinfo is JSON
-    -- on the `players` table in both frameworks.
-    function Framework.GetNameByCitizenId(citizenid)
-        local online = Framework.GetPlayerByCitizenId(citizenid)
-        if online then return Framework.GetName(online) end
-        local row = MySQL.single.await('SELECT charinfo FROM players WHERE citizenid = ?', { citizenid })
-        if row then
-            local ci = json.decode(row.charinfo or '{}') or {}
-            if ci.firstname then return ('%s %s'):format(ci.firstname, ci.lastname or '') end
-        end
-        return citizenid
-    end
-
-    -- All on-duty players holding one of the given job names.
-    function Framework.GetPlayersByJobs(jobNames)
-        local jobSet = {}
-        for _, j in ipairs(jobNames or {}) do jobSet[j] = true end
+    function Framework.PoliceSources(onDutyOnly)
+        local jobs = {}
+        for _, j in ipairs((Config.Police or {}).Jobs or {}) do jobs[j] = true end
         local out = {}
-        for _, sid in ipairs(GetPlayers()) do
-            sid = tonumber(sid)
-            local job = Framework.GetJob(sid)
-            if job and jobSet[job.name] and job.onDuty ~= false then
-                out[#out + 1] = sid
+        for _, id in ipairs(GetPlayers()) do
+            local src = tonumber(id)
+            local job = src and Framework.GetJob(src)
+            if job and jobs[job.name] and (not onDutyOnly or job.onDuty ~= false) then
+                out[#out + 1] = src
             end
         end
         return out
     end
 
-    -- ── Money (cash/bank via framework) ─────────────────────
-    function Framework.AddMoney(src, account, amount, reason)
-        local player = Framework.GetPlayer(src)
-        if not player then return false end
-        return player.Functions.AddMoney(account, amount, reason or 'XS-AirDrops')
+    local function groupList(source)
+        local out = {}
+        for name, data in pairs(source or {}) do
+            if type(data) == 'table' and name ~= 'none' then
+                out[#out + 1] = { name = name, label = data.label or name }
+            end
+        end
+        table.sort(out, function(a, b) return tostring(a.label) < tostring(b.label) end)
+        return out
     end
 
-    function Framework.RemoveMoney(src, account, amount, reason)
-        local player = Framework.GetPlayer(src)
-        if not player then return false end
-        return player.Functions.RemoveMoney(account, amount, reason or 'XS-AirDrops')
+    function Framework.Jobs()
+        local ok, list = pcall(function()
+            if Framework.name == 'qbox' then return exports.qbx_core:GetJobs() end
+            return Framework.core and Framework.core.Shared.Jobs or {}
+        end)
+        return groupList(ok and list or {})
     end
 
-    function Framework.GetMoney(src, account)
-        local player = Framework.GetPlayer(src)
-        if not player then return 0 end
-        return player.PlayerData.money[account] or 0
+    function Framework.Gangs()
+        local ok, list = pcall(function()
+            if Framework.name == 'qbox' then return exports.qbx_core:GetGangs() end
+            return Framework.core and Framework.core.Shared.Gangs or {}
+        end)
+        return groupList(ok and list or {})
     end
 
-    -- Admin check: ACE, framework group, or explicit license (Config.Admin).
     function Framework.IsAdmin(src)
         local A = Config.Admin or {}
         if A.acePermission and IsPlayerAceAllowed(src, A.acePermission) then return true end
@@ -188,22 +145,26 @@ if IS_SERVER then
         return false
     end
 
-    -- Branded, icon-led notification. `title` overrides the default header.
+    function Framework.CanBuild(src)
+        if Framework.IsAdmin(src) then return true end
+        for _, ace in ipairs((Config.AdminCommand or {}).Aces or {}) do
+            if IsPlayerAceAllowed(src, ace) then return true end
+        end
+        return false
+    end
+
     function Framework.Notify(src, msg, type, title)
         local NS = Config.NotifyStyle or {}
-        local ico = (NS.icons or {})[type or 'inform'] or {}
         TriggerClientEvent('ox_lib:notify', src, {
-            title = title or (NS.title ~= false and NS.title or nil),
+            title = title or (NS.title ~= '' and NS.title or nil),
             description = msg,
             type = type or 'inform',
             position = NS.position,
             duration = NS.duration,
-            icon = ico.icon,
-            iconColor = ico.color,
+            icon = NS.icon ~= '' and NS.icon or nil,
         })
     end
 else
-    -- ── Client ──────────────────────────────────────────────
     function Framework.GetPlayerData()
         if Framework.name == 'qbox' then
             return exports.qbx_core:GetPlayerData()
@@ -214,20 +175,18 @@ else
 
     function Framework.Notify(msg, type, title)
         local NS = Config.NotifyStyle or {}
-        local ico = (NS.icons or {})[type or 'inform'] or {}
         lib.notify({
-            title = title or (NS.title ~= false and NS.title or nil),
+            title = title or (NS.title ~= '' and NS.title or nil),
             description = msg,
             type = type or 'inform',
             position = NS.position,
             duration = NS.duration,
-            icon = ico.icon,
-            iconColor = ico.color,
+            icon = NS.icon ~= '' and NS.icon or nil,
         })
     end
 end
 
-if Config and Config.Debug then
+if Config.Debug then
     print(('^2[XS-AirDrops]^0 framework bridge loaded (%s) on %s'):format(
         Framework.name or 'none', IS_SERVER and 'server' or 'client'))
 end

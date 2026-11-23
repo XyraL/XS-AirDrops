@@ -1,6 +1,6 @@
 <h1 align="center">XS-AirDrops</h1>
 
-<p align="center">Contested supply drops for <strong>QBox</strong> and <strong>QBCore</strong> — announced, flown in by cargo plane, and cracked open by whoever holds the ground.</p>
+<p align="center">Contested supply drops for <strong>QBox</strong> and <strong>QBCore</strong> — announced, flown in by cargo plane, and cracked open by whoever holds the ground. Built in game.</p>
 
 <p align="center">
   <a href="https://github.com/XyraL/XS-AirDrops/releases"><img src="https://img.shields.io/github/v/release/XyraL/XS-AirDrops?style=flat-square&color=f5a524&label=release" alt="Latest release"></a>
@@ -15,139 +15,203 @@
 ## It never touches PvP
 
 No damage flags, no combat rules, no overriding who may shoot whom. The script
-puts loot on the ground and announces it; whether a fight happens over that, and
-whether it is allowed, is your server's business.
+puts loot on the ground and announces it. Whether a fight happens over it, and
+whether that is allowed, is your server's business.
 
-That is why it installs on a hardcore PvP server and a strict-RP server without
-either having to fight it.
+That is why it installs on a hardcore PvP server and a strict RP server alike.
 
 ---
 
 ## How a drop plays out
 
-1. **Announced.** Everyone is told a drop is inbound, and roughly where. A
-   flashing blip shows the *approximate* area — a 250m circle, not the exact
-   spot — and an **on-screen countdown** runs until it lands, turning red in the
-   last fifteen seconds. The warning window is the interesting part: it is when
-   people decide whether to go, gear up, and travel, and a number they can
-   glance at while driving is what makes that a decision rather than a guess.
-2. **Inbound.** A cargo plane flies over on a random bearing and releases the
-   crate under a chute.
-3. **Landed.** The exact position appears, with smoke and a flare, and the
-   contested radius is drawn on the map as a **red circle** — the yellow search
-   area becomes a red zone, so the two states are never mistaken for each other
-   at a glance.
-4. **Cracking.** Standing at the crate for 25 seconds opens it. You cannot move,
-   drive or fight while doing it — that exposure is what makes the crate worth
-   contesting rather than just racing to.
-5. **Open.** Loot is rolled *at this moment*, server-side, and the crate becomes
-   lootable by anyone who reaches it. Not just whoever cracked it.
-6. **Gone.** The crate despawns once it is emptied, or after its timer runs out.
+1. **Announced.** Everyone is told a drop is inbound and roughly where. A wide
+   yellow circle shows the search area and an on-screen countdown runs until it
+   lands, turning red in the last fifteen seconds.
+2. **Inbound.** A cargo plane flies over and drops the crate under a chute.
+3. **Landed.** The circle shrinks to a red contest zone, with smoke and a flare
+   on the crate.
+4. **Cracking.** Standing at the crate for its crack time opens it. You cannot
+   move, drive or fight while doing it. That is what makes it worth fighting
+   over instead of just racing to.
+5. **Open.** Loot is rolled right then, on the server, and anyone who reaches
+   the crate can take from it. The pin and circle come off the map for everyone.
+6. **Gone.** The crate goes once it is emptied, or when its time runs out.
 
-### It will not vanish out from under you
+The timer only runs out on an empty zone. If anyone is there, or someone is
+mid-crack, the crate is held a bit longer, up to a hard cap from landing.
 
-The despawn timer only runs out on an **empty** zone. If anyone is there, or
-mid-crack, the crate is held for another `PresenceGrace` — repeatedly, so it
-outlives whoever is using it. `MaxLifetime` caps that from landing so nobody
-can camp one all night.
-
-An emptied crate lingers for `EmptyLinger` rather than vanishing on the last
-item, so late arrivals can see they missed it.
-
-Each of those steps has an audio cue, using native GTA sounds so there are no
-files to stream. The last ten seconds of the warning window tick audibly — that
-one is separately switchable, because it is the cue people tire of first.
-
-Police are alerted **45 seconds after landing**, not immediately. Whoever raced
-for the crate should get there first; law enforcement arriving into an existing
-fight is a better scene than law enforcement waiting at the coordinates.
+Police are told **after** landing, 45 seconds by default. Whoever raced for the
+crate gets there first.
 
 ---
 
 ## Installation
 
 1. Drop `XS-AirDrops` in your resources folder.
-2. Run `sql/airdrops.sql` against your database. It creates four tables and is
-   safe to re-run.
-3. `ensure XS-AirDrops` in your `server.cfg`, after your framework and
-   inventory.
+2. `ensure XS-AirDrops` in your `server.cfg`, after `ox_lib`, `oxmysql`, your
+   framework and your inventory.
+3. Give your staff the builder: `add_ace group.admin xs.airdrops allow`
+4. Restart, go in game and type `/airdrops`.
 
-The ten drop locations and four loot tiers in `config.lua` are copied into those
-tables the first time the resource starts, so a fresh install behaves exactly as
-the config file reads.
+No SQL to run. The tables are made on first start. `sql/airdrops.sql` is there
+if you would rather make them yourself.
 
-**After that the database owns them and the admin panel edits them.** Editing
-`config.lua` later does nothing, which is deliberate — two places claiming to
-own the same setting is how they quietly drift apart.
+### Updating from 1.0.x
+
+Replace the folder. On the first start your old locations become drop zones,
+your loot tiers become a "Standard loot" table, and your old panel settings
+become a "Standard crate". Nothing is lost. Your old `config.lua` still works,
+the new one has the new options in it.
 
 ### Requirements
 
 - `ox_lib`
 - `oxmysql`
-- A framework: **qbx_core** or **qb-core** (auto-detected)
+- A framework: **qbx_core** or **qb-core**
 - An inventory: **ox_inventory**, qb-inventory, qs-inventory, codem-inventory,
-  core_inventory or ps-inventory (auto-detected)
+  core_inventory or ps-inventory
 
-`ox_target` is optional — the crate has a key prompt either way.
+`ox_target` or `qb-target` is optional. Settings › Opening picks whether crates
+open with E or with the target eye. Without a target script it uses E.
 
 ### A note on inventories
 
-On **ox_inventory** the crate is a real shared stash: several people can rummage
-in the same box at once and the inventory sorts out who grabbed what. This is
-what the script is designed around.
+On **ox_inventory** the crate is a real shared stash. Several people can dig
+through the same box at once.
 
-The other five backends only create a stash when a player opens one, and none of
-them can be handed a filled container. On those, the crate yields
-`Config.Loot.StacksPerSearch` stacks per search instead, so the scramble still
-works — being first still matters, being second still gets you something. It is
-a different feel, and worth knowing before you pick.
+The other five cannot be handed a filled box, so the crate gives out a few
+stacks per search instead. Being first still matters, being second still gets
+you something. Crate types can also cap how many times one player can search.
+
+---
+
+## The builder
+
+```
+/airdrops
+```
+
+Everything about drops is built in game. Changes are live as soon as you save,
+no restart. Ctrl+K searches every zone, crate, loot table, setting and page.
+
+- **Overview** — how ready your setup is, what still needs fixing (each problem
+  is a button straight to it), drops today, what is running, and what the
+  script found on your server.
+- **Drop zones** — where crates land. A zone has one or more landing points
+  (one is picked each drop), placed from the sky with a freecam that shows the
+  crate and the contest circle, or at your feet. Each zone sets its contest and
+  search radius, crate type, loot table, its share of the rotation, players or
+  police needed, a time of day, and which way the plane flies in. Teleport to it,
+  show every point in the world, or run a silent test drop there.
+- **Crate types** — the prop, how long it takes to open, slots or stacks per
+  search, who can open it, police allowed or not, the plane and its height,
+  parachute, flare and smoke, the police alert and its delay, the announcement
+  text and the map pin.
+- **Loot tables** — tiers and items with the real odds worked out for you.
+  The item box searches your server's items and warns you about names that do
+  not exist. Roll a test crate to see what comes out.
+- **Schedule** — automatic drops on or off, the gap between them, active hours,
+  players needed, how many can run at once, zone cooldown and warning time. It
+  also shows which zones can take a drop right now and why not.
+- **Live** — what is running, with countdowns. Start one at any zone with any
+  crate and loot, cancel one, or teleport to it.
+- **History** — every drop, what was in it and who opened it. If more than half
+  are abandoned, they land where nobody goes or the loot is not worth the trip.
+- **Settings** — every other number, saved in the database. Reset puts one back
+  to `config.lua`.
+- **Access** — who can get in, and the line to add.
+
+### Silent test drops
+
+A real crate with real loot that only staff can see. No announcement, no police,
+kept out of the history. Build a zone, test it without telling the server, keep
+it or bin it.
+
+### Who can open the builder
+
+Any one of these:
+
+- the ace in `Config.Admin.acePermission` (`xs.airdrops`)
+- any ace in `Config.AdminCommand.Aces`
+- a framework group in `Config.Admin.groups`
+- a licence in `Config.Admin.licenses`
+
+```
+add_ace group.admin xs.airdrops allow
+```
+
+Without one of them, `/airdrops` says you do not have permission. Every builder
+action checks again on the server.
+
+---
+
+## Calling a drop by hand
+
+```
+/airdrop
+/airdrop sandy
+/airdrop 3
+```
+
+With no argument it picks a zone by weight. With a name it drops at the first
+zone whose name contains it, or a zone number. Same permission as the builder.
+The server console can always call one.
+
+---
+
+## Who can see and collect
+
+| | What it controls |
+| --- | --- |
+| Drop zone › Who sees it | Everyone, only some jobs and gangs, everyone except some, or the default |
+| Settings › Who takes part › Who sees drops | The default for every zone that does not pick its own |
+| Settings › Who takes part › Collect | The default rule for who can open a crate |
+| Crate type › Who can open | Everyone, only some jobs and gangs, or the default |
+| Police | Always see drops, and can or cannot loot. Crate types can override it |
+
+Seeing a drop means the pin, the circles, the messages and the crate itself.
+Players a drop is hidden from are never sent where it is, so they cannot open it
+either. "Everyone except police" keeps a drop off police maps even when police
+always see drops, and police are only called when they can see it.
+
+Turning police looting off is what makes a drop a three-way scene: crews fight
+over it, police turn up to stop them, and nobody in uniform is there to loot.
+Someone who is refused is told why.
+
+A player who changes job, gang or character mid-drop loses or gains it straight
+away.
 
 ---
 
 ## Configuration
 
-Everything lives in `config.lua`.
+`config.lua` holds the defaults. Anything changed in the builder wins over it.
 
 | Setting | What it does |
 | --- | --- |
-| `Config.Schedule` | Interval between drops, minimum players, optional hour window |
-| `Config.Drop` | Warning time, crack time, zone radius, how long a crate lasts |
-| `Config.Delivery` | Plane model, crate model, altitude — or turn the flyover off |
-| `Config.Locations` | Seed locations only — the panel owns these after first start |
-| `Config.Loot` | Stack counts and the guaranteed minimum tier. Tiers and items live in the panel |
-| `Config.Access` | Who sees drops, who can collect, and the police exception |
-| `Config.Blip` | Pin and zone colours; the live zone is red, the search area yellow |
-| `Config.Police` | Whether police are alerted, and how long after landing |
-| `Config.Announce` | Server messages, whether to name the area, Discord webhook |
-| `Config.Sounds` | Audio cues, and the countdown ticks separately |
+| `Config.Admin` / `Config.AdminCommand` | Who gets the builder, and the two commands |
+| `Config.Schedule` | Gap between drops, players needed, hours, drops at once, zone cooldown |
+| `Config.Drop` | Warning time, circle sizes, how long a crate lasts, reach, E or target |
+| `Config.Delivery` | Plane flyovers on or off, speed, how far out it appears |
+| `Config.Loot` / `Config.Locations` | Only used to make the first loot table, crate type and zones |
+| `Config.Access` | Who sees drops, who can open them, the police rule |
+| `Config.Police` | Jobs alerted, dispatch code and title |
+| `Config.Blip` | Pin size and circle colours |
+| `Config.Announce` | Text on or off, name the zone, Discord webhook |
+| `Config.Sounds` | Audio cues and the countdown ticks |
+| `Config.Builder` | Freecam speed and how long "show all points" lasts |
 
-### Loot tiers
+### Items
 
-Weights are **relative, not percentages**, so you can add a tier without
-rebalancing every other number.
+The stock loot uses items QBCore already ships, plus two that are not standard.
+Both have images in `inventory_images/`:
 
-`GuaranteeAtLeast` forces one roll up to that tier or better. A crate that is
-entirely bandages after a five-minute fight is the fastest way to teach players
-to ignore the next one.
+| Item | Add it as |
+|---|---|
+| `thermite` | `{ label = 'Thermite', weight = 900, stack = true }` |
+| `trojan_usb` | `{ label = 'Trojan USB', weight = 100, stack = true }` |
 
-Loot is rolled **when the crate is cracked** — never when it is announced, and
-never on a client. If the contents can be known before the fight, people decide
-whether the fight is worth having, and the fight is the product.
-
-**The loot table uses your server's items.** Everything in the stock tiers is
-something QBCore already ships — `bandage`, `water_bottle`, `sandwich`,
-`plastic`, `metalscrap`, `lockpick`, `radio`, `firstaid`, `steel`, `goldbar`,
-the weapons and their ammo. If a name does not exist on your server the roll is
-skipped, so check the list against your own items before you go live.
-
-Two are not standard, and both ship with images in `inventory_images/`:
-
-| Item | Tier | Add it as |
-|---|---|---|
-| `thermite` | Rare | `{ label = 'Thermite', weight = 900, stack = true }` |
-| `trojan_usb` | Rare | `{ label = 'Trojan USB', weight = 100, stack = true }` |
-
-Drop `thermite.png` and `trojan_usb.png` into your inventory's image folder:
+Drop the PNGs into your inventory's image folder:
 
 | Inventory | Where |
 |---|---|
@@ -158,148 +222,50 @@ Drop `thermite.png` and `trojan_usb.png` into your inventory's image folder:
 | codem-inventory | `codem-inventory/html/itemimages/` |
 | core_inventory | `core_inventory/html/img/` |
 
-If yours is not listed, put them wherever its existing item PNGs already live.
-Or cut both rows out of `Config.Loot` and use items you already have — nothing
-else in the script references them.
-
-### Locations
-
-Pick open ground with **more than one approach**. A spot with a single road in
-belongs to whoever parks on it, and that is not a contest.
-
-The same location is never chosen twice in a row, whatever the weights say.
-
----
-
-## Who can see and collect
-
-Two separate questions, because they usually have different answers.
-`Config.Access` answers both, and both are enforced **server-side** — a blip
-filtered out on the client would stop nobody.
-
-| | What it controls |
-| --- | --- |
-| `Access.See` | Who is told a drop is happening and gets the blip |
-| `Access.Collect` | Who can crack the crate and take from it |
-| `Access.Police` | Overrides both, for police jobs specifically |
-
-The default is everyone sees it and everyone can take it. Both blocks accept
-job and gang lists when `Everyone = false`.
-
-**Police are called out separately because they are the usual exception.**
-Setting `Police.CanSee = true` and `Police.CanCollect = false` is what turns a
-drop into a three-way scene: criminals fight over it, police turn up to stop
-them, and nobody in uniform is there to loot. Someone refused gets told why
-rather than watching the prompt do nothing.
-
-A player who changes job mid-event loses the blip rather than keeping a stale
-one, because every state change is re-filtered.
-
----
-
-## The admin panel
-
-```
-/airdrops
-```
-
-Four tabs, gated by the same permission as the command — and re-checked on every
-single callback, since anyone can send one whether or not a panel exists on
-their screen.
-
-- **Live Drop** — what is running right now, with a countdown. Start one on a
-  chosen location or by weight, or cancel the one in progress.
-- **Locations** — add, edit, enable and delete. **Use my current position**
-  captures where you are standing, which is the point of doing this in game
-  rather than in a config file. *Go to* teleports you to a location to check it.
-- **Loot Tables** — tiers and items, with the **resolved percentages worked out
-  for you**. "Weight 28" means nothing on its own; "28% of rolls" is the actual
-  question you were asking.
-- **History** — every drop, what was in it, and who cracked it. The number that
-  matters is the abandon rate: if more than half are going untouched, they are
-  landing where nobody goes or the loot is not worth the trip.
-- **Settings** — the numbers worth nudging while a drop is playing out: warning
-  window, crack time, zone radius, schedule interval, loot stack counts. Saved to
-  the database and applied immediately, **no restart**. Each field saves on its
-  own, and anything you have not touched still follows config.lua — *Reset* puts
-  a setting back to the file value rather than to a copy taken months ago.
-
-Deleting the last remaining location is refused — an empty table makes drops
-silently stop happening, which reads as a bug rather than a choice.
-
-### Silent test drops
-
-The start dialog has a **Silent test** option. It runs a real drop — real crate,
-real loot, real cracking — but only admins can see it: no announcement, no blip
-for players, no police call, and it is kept out of the history so testing a new
-location does not skew the numbers you tune against.
-
-It is the other half of the *use my current position* workflow: capture a spot,
-test it without telling the server, keep it or bin it.
-
----
-
-## Calling a drop by hand
-
-```
-/airdrop
-/airdrop sandy
-```
-
-With no argument it picks a location by weight. With one, it matches the first
-location whose label contains that text.
-
-Permission comes from `Config.Admin` (ace, framework group, or licence) or any
-ace in `Config.AdminCommand.Aces`. The server console can always call one.
+Or take them out of the loot table in the builder.
 
 ---
 
 ## Exports
 
 ```lua
-exports['XS-AirDrops']:IsDropActive()      -- boolean
-exports['XS-AirDrops']:GetDrop()           -- the public state, or nil
-exports['XS-AirDrops']:StartDrop('sandy')  -- start one; returns ok, err
+exports['XS-AirDrops']:IsDropActive()            -- boolean
+exports['XS-AirDrops']:GetDrop()                 -- one running drop, or nil
+exports['XS-AirDrops']:GetDrops()                -- every running drop
+exports['XS-AirDrops']:StartDrop('sandy')        -- returns ok, drop id or error
+exports['XS-AirDrops']:StartDrop(nil, { silent = true })
 ```
 
-`GetDrop()` returns what clients are allowed to know, which means the exact
-coordinates only once the crate is on the ground.
+`GetDrop()` and `GetDrops()` return what players are allowed to know.
 
 ---
 
 ## Works with the rest of the line
 
-If you run **XS-Dispatch**, the police alert becomes a proper dispatch call
-with a code, a description and a blip, rather than a notification. It falls back
-through ps-dispatch, qs-dispatch, cd_dispatch and core_dispatch, and then to a
-plain notification with a blip — so it always tells somebody.
+The police alert goes through **XS-Dispatch** when it runs, then ps-dispatch,
+qs-dispatch, cd_dispatch, core_dispatch, rcore_dispatch or linden_outlawalert,
+and falls back to a plain notification with a blip. It is sent once from the
+server, so officers never get the same call twice.
 
 ---
 
-## Notes on how it's built
+## How it is built
 
-**The crate is not a networked entity.** Under OneSync, ownership of a networked
-entity follows whichever client has it in scope — not whoever created it. A
-crate spawned server-side ends up owned by the first player who wanders near it,
-and one spawned client-side is owned by someone who can then delete it. Since
-the crate never needs to move, sync, or take damage, it is a local prop on every
-client and the truth lives on the server as a coordinate. Nothing to steal,
-nothing to clean up after a restart.
+**The crate is not a networked entity.** It is a local prop on every client and
+the truth lives on the server as a spot on the map. Nothing to steal, nothing to
+clean up after a restart.
 
-**The server does not trust the client.** It records when you started cracking,
-checks you were near the crate then, checks you are still near it when you claim
-to have finished, and checks that the time actually elapsed. Sending
-`finishCrack` straight after `beginCrack` gets you nothing.
+**The server does not trust the client.** It checks you were at the crate when
+you started cracking, that you are still there when you finish, and that the
+time really passed.
 
-**Crates take their contents with them.** When a drop ends, its stash is
-cleared. Otherwise a server accumulates one orphaned stash per drop forever,
-each still holding whatever nobody collected.
+**Crates take their contents with them.** When a drop ends, its stash is cleared.
 
 ---
 
 ## My other scripts
 
-Free, source-available FiveM scripts — [xyralscripts.dev](https://xyralscripts.dev)
+Free FiveM scripts — [xyralscripts.dev](https://xyralscripts.dev)
 
 ---
 

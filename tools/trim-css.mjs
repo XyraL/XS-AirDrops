@@ -15,7 +15,7 @@
 //   node tools/trim-css.mjs           rewrite the file
 import { readFileSync, writeFileSync, globSync } from 'node:fs';
 
-const FILE = 'html/css/style.css';
+const FILE = process.argv.find((a) => a.endsWith('.css')) || 'html/css/builder.css';
 const dry = process.argv.includes('--dry');
 
 const css = readFileSync(FILE, 'utf8');

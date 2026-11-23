@@ -16,7 +16,7 @@ const cfg = readFileSync('config.lua', 'utf8');
 const defined = new Set();
 for (const m of cfg.matchAll(/^\s{4,}([A-Za-z][A-Za-z0-9_]*)\s*=/gm)) defined.add(m[1]);
 
-const code = ['server', 'client', 'bridge']
+const code = ['server', 'client', 'bridge', 'shared']
   .flatMap((dir) => readdirSync(dir).map((f) => join(dir, f)))
   .filter((f) => f.endsWith('.lua'))
   .map((f) => readFileSync(f, 'utf8'))

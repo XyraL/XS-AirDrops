@@ -1,163 +1,115 @@
-// Shared helpers for the panel.
-//
-// Everything that renders officer- or admin-typed text goes through esc(). The
-// MDT shipped 154 unescaped innerHTML writes before anyone noticed, and a loot
-// table is exactly the same shape of problem: an item name is free text typed
-// by one admin and rendered into another admin's panel.
+const RESOURCE = (typeof GetParentResourceName === 'function') ? GetParentResourceName() : 'XS-AirDrops';
 
-// The NUI host must equal the resource folder name exactly, and that name is
-// case-sensitive on Linux servers. Ask the game for it rather than hardcoding.
-const AD_RESOURCE = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'XS-AirDrops';
+const XS = {
+    apps: {},
+};
+window.XS = XS;
 
-function esc(value) {
+XS.esc = function esc(value) {
     if (value === null || value === undefined) return '';
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+};
 
-// One request shape for the whole panel. Returns the parsed body, or null when
-// the callback is missing or errored — every caller has to handle null anyway,
-// so throwing here would just move the check.
-async function nui(endpoint, payload = {}) {
+XS.fix = function fix(value) {
+    if (Array.isArray(value)) return value.map(fix);
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (keys.length === 0) return [];
+        const out = {};
+        keys.forEach((k) => { out[k] = fix(value[k]); });
+        return out;
+    }
+    return value;
+};
+
+XS.list = function list(value) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') return Object.values(value);
+    return [];
+};
+
+XS.post = async function post(endpoint, payload) {
     try {
-        const res = await fetch(`https://${AD_RESOURCE}/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+        const res = await fetch(`https://${RESOURCE}/${endpoint}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}),
         });
-        return await res.json();
+        return XS.fix(await res.json());
     } catch (e) {
         return null;
     }
-}
-
-// ── Toasts ──────────────────────────────────────────────────────────────────
-
-const TOAST_ICONS = { info: 'i', success: '✓', error: '✕', warning: '!' };
-
-function toast(title, body = '', type = 'info', duration = 4200) {
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.innerHTML = `
-        <div class="toast-icon">${TOAST_ICONS[type] || 'i'}</div>
-        <div class="toast-content">
-            <div class="toast-title">${esc(title)}</div>
-            ${body ? `<div class="toast-body">${esc(body)}</div>` : ''}
-        </div>`;
-
-    document.getElementById('toast-container').appendChild(el);
-
-    setTimeout(() => {
-        el.style.transition = 'opacity .3s ease, transform .3s ease';
-        el.style.opacity = '0';
-        el.style.transform = 'translateX(20px)';
-        setTimeout(() => el.remove(), 300);
-    }, duration);
-}
-
-// A server callback that returns { ok = false, error = '...' } is reported with
-// the reason it gave. "Failed" tells an admin nothing about what to change.
-function reportResult(result, successTitle, successBody) {
-    if (result && result.ok) {
-        toast(successTitle, successBody || '', 'success');
-        return true;
-    }
-    toast('Could not save', (result && result.error) || 'The server refused it.', 'error');
-    return false;
-}
-
-// ── Modals ──────────────────────────────────────────────────────────────────
-
-function closeModal() {
-    document.getElementById('modal-root').innerHTML = '';
-}
-
-// `onConfirm` may return false to keep the modal open, which is what validation
-// failures need — closing on a rejected save loses whatever was typed.
-//
-// Passing no `onConfirm` makes it a read-only view: one button that dismisses
-// it. Offering "Cancel" next to "Close" on something with nothing to cancel
-// asks the reader to work out a difference that does not exist.
-function modal(title, bodyHtml, onConfirm, confirmLabel = 'Save') {
-    const root = document.getElementById('modal-root');
-    const readOnly = typeof onConfirm !== 'function';
-
-    root.innerHTML = `
-        <div class="modal-backdrop">
-            <div class="modal">
-                <div class="modal-header">
-                    <div class="modal-title">${esc(title)}</div>
-                    <button class="modal-close" data-modal-cancel>&times;</button>
-                </div>
-                <div class="modal-body">${bodyHtml}</div>
-                <div class="modal-footer">
-                    ${readOnly ? '' : '<button class="btn btn-ghost" data-modal-cancel>Cancel</button>'}
-                    <button class="btn ${readOnly ? 'btn-ghost' : 'btn-primary'}" data-modal-confirm>
-                        ${esc(readOnly ? 'Close' : confirmLabel)}
-                    </button>
-                </div>
-            </div>
-        </div>`;
-
-    root.querySelectorAll('[data-modal-cancel]').forEach(el =>
-        el.addEventListener('click', closeModal));
-
-    root.querySelector('[data-modal-confirm]').addEventListener('click', async (e) => {
-        if (readOnly) { closeModal(); return; }
-
-        const btn = e.currentTarget;
-        btn.disabled = true;
-        const keepOpen = await onConfirm();
-        btn.disabled = false;
-        if (keepOpen !== false) closeModal();
-    });
-
-    // Focus the first field so a modal opened to type in is ready to type in.
-    const first = root.querySelector('input, textarea, select');
-    if (first) first.focus();
-}
-
-const val = (id) => (document.getElementById(id)?.value || '').trim();
-const numVal = (id, fallback = 0) => {
-    const n = parseFloat(val(id));
-    return Number.isFinite(n) ? n : fallback;
 };
-const checked = (id) => document.getElementById(id)?.checked === true;
 
-function confirmDelete(what, onYes) {
-    modal('Delete ' + what, `
-        <p class="text-secondary">This cannot be undone.</p>`,
-        onYes, 'Delete');
+XS.rpc = async function rpc(name, payload) {
+    const res = await XS.post('rpc', { name, payload: payload || {} });
+    if (!res) return { ok: false, error: 'That did not go through.' };
+    return res;
+};
+
+XS.server = function server(action, payload) {
+    return XS.rpc('b:server', { action, payload: payload || {} });
+};
+
+XS.close = function close(app) {
+    XS.post('close', { app });
+};
+
+XS.clock = function clock(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    return `${m}:${String(r).padStart(2, '0')}`;
+};
+
+XS.span = function span(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+};
+
+XS.ago = function ago(seconds) {
+    const s = Number(seconds);
+    if (!Number.isFinite(s) || s < 0) return '—';
+    if (s < 60) return 'just now';
+    return `${XS.span(s)} ago`;
+};
+
+XS.toast = function toast(text, kind) {
+    if (!text) return;
+    const box = document.getElementById('xsp-toastbox');
+    const el = document.createElement('div');
+    el.className = `xsp-toast ${kind === 'error' ? 't-err' : (kind === 'ok' ? 't-ok' : '')}`;
+    el.textContent = text;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 3800);
+};
+
+XS.show = function show(id, on) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('xsp-hidden', !on);
+};
+
+function scale() {
+    const s = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
+    document.documentElement.style.setProperty('--xsp-s', String(s));
 }
+window.addEventListener('resize', scale);
+scale();
 
-// ── Formatting ──────────────────────────────────────────────────────────────
+window.addEventListener('message', (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== 'object' || !msg.app) return;
+    const app = XS.apps[msg.app];
+    if (app && app.on) app.on(msg.action, XS.fix(msg.data || {}));
+});
 
-// Takes an age in seconds, worked out by the database.
-//
-// Deliberately not a timestamp: a MySQL TIMESTAMP comes back in the server's
-// local time, and the player reading this panel may be in any timezone at all,
-// so subtracting one from the other on the client is wrong by the offset
-// between them. The same reasoning applies to the drop countdown, which is why
-// that also travels as seconds rather than a moment in time.
-function timeAgo(seconds) {
-    const secs = Number(seconds);
-    if (!Number.isFinite(secs) || secs < 0) return '—';
+window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const app = XS.apps.builder;
+    if (app && app.isOpen && app.isOpen() && app.escape) app.escape();
+});
 
-    if (secs < 60) return 'just now';
-    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-    return `${Math.floor(secs / 86400)}d ago`;
-}
-
-function emptyState(icon, title, subtitle) {
-    return `
-        <div class="empty-state">
-            <div class="empty-icon">${esc(icon)}</div>
-            <div class="empty-title">${esc(title)}</div>
-            ${subtitle ? `<div class="empty-subtitle">${esc(subtitle)}</div>` : ''}
-        </div>`;
-}
+window.addEventListener('load', () => { XS.post('ready', {}); });

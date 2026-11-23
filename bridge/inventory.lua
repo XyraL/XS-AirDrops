@@ -1,13 +1,6 @@
--- ─────────────────────────────────────────────────────────────
--- Inventory bridge
--- One API over ox_inventory / qb-inventory / qs-inventory /
--- codem-inventory / core_inventory / ps-inventory.
---
--- Deliberately smaller than the one in cipher-drugs. A crate needs to exist as
--- a container, be filled once, and be opened by whoever reaches it — there is
--- no metadata, no quality banding and no per-player item juggling here.
--- ─────────────────────────────────────────────────────────────
 Inv = { name = nil }
+
+if not Config then return end
 
 local IS_SERVER = IsDuplicityVersion()
 
@@ -35,40 +28,25 @@ do
 end
 
 if IS_SERVER then
-    -- Crates are stashes. Using the inventory's own container means two players
-    -- looting at once is the inventory's problem to solve, and it already has,
-    -- rather than something this script invents badly.
-    function Inv.RegisterStash(id, label, slots, maxWeight)
+    function Inv.RegisterStash(id, label, slots, maxWeight, at)
         if Inv.name == 'ox_inventory' then
-            exports.ox_inventory:RegisterStash(id, label, slots, maxWeight)
+            local coords = at and vector3((tonumber(at.x) or 0) + 0.0, (tonumber(at.y) or 0) + 0.0, (tonumber(at.z) or 0) + 0.0) or nil
+            exports.ox_inventory:RegisterStash(id, label, slots, maxWeight, nil, nil, coords)
         end
-        -- qb / qs / ps / codem / core open stashes by id with no registration.
         return true
     end
 
-    -- Puts an item into the crate rather than into a player.
     function Inv.AddToStash(id, item, count)
         if Inv.name == 'ox_inventory' then
             return exports.ox_inventory:AddItem(id, item, count)
         end
-
-        -- Every other backend creates stash contents lazily when first opened,
-        -- and none of them expose a reliable "add to a stash that nobody has
-        -- opened yet" call. Those crates are filled on open instead — see
-        -- server/loot.lua, which keeps the rolled contents until then.
         return false
     end
 
-    -- True when the backend can be filled up front. Decides whether loot is
-    -- pushed into the container at crack time or held and handed over on open.
     function Inv.CanPrefillStash()
         return Inv.name == 'ox_inventory'
     end
 
-    -- Has the crate been emptied? Only ox_inventory can answer; the others
-    -- create their stash lazily and cannot be read back.
-    --
-    -- Returns nil for "cannot tell", which is not the same as false.
     function Inv.StashIsEmpty(id)
         if Inv.name ~= 'ox_inventory' then return nil end
 
@@ -83,15 +61,10 @@ if IS_SERVER then
         return true
     end
 
-    -- Emptied when a drop ends. Every crate registers its own stash under a
-    -- unique id, so without this a server accumulates one orphaned stash per
-    -- drop forever — each still holding whatever nobody bothered to loot.
     function Inv.ClearStash(id)
         if Inv.name == 'ox_inventory' then
             return exports.ox_inventory:ClearInventory(id)
         end
-        -- Lazily-created stashes on other backends only exist once opened, and
-        -- are keyed per drop, so there is nothing registered to clear here.
         return false
     end
 
@@ -116,9 +89,25 @@ if IS_SERVER then
         if Inv.name == 'ox_inventory' then
             return exports.ox_inventory:CanCarryItem(src, item, count)
         end
-        -- Other backends refuse the add themselves when full, so assume yes
-        -- and let the add fail rather than blocking a legitimate pickup.
         return true
+    end
+
+    function Inv.Items()
+        local out = {}
+        local ok, list = pcall(function()
+            if GetResourceState('ox_inventory') == 'started' then return exports.ox_inventory:Items() end
+            if Framework.core then return Framework.core.Shared.Items end
+            return nil
+        end)
+        if not ok or type(list) ~= 'table' then return out end
+        for key, data in pairs(list) do
+            if type(data) == 'table' then
+                local name = data.name or key
+                out[#out + 1] = { name = tostring(name), label = tostring(data.label or name) }
+            end
+        end
+        table.sort(out, function(a, b) return a.name < b.name end)
+        return out
     end
 else
     function Inv.OpenStash(id, data)
@@ -139,7 +128,7 @@ else
     end
 end
 
-if Config and Config.Debug then
+if Config.Debug then
     print(('^2[XS-AirDrops]^0 inventory bridge loaded (%s) on %s'):format(
         Inv.name or 'none', IS_SERVER and 'server' or 'client'))
 end

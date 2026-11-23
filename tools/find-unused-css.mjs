@@ -8,7 +8,7 @@
 //   node tools/find-unused-css.mjs
 import { readFileSync, globSync } from 'node:fs';
 
-const css = readFileSync('html/css/style.css', 'utf8');
+const css = globSync('html/css/*.css', { cwd: process.cwd() }).map((f) => readFileSync(f, 'utf8')).join('\n');
 
 // Everything that could name a class at runtime: markup, template literals,
 // and classList calls.

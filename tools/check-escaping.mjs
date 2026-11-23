@@ -30,11 +30,48 @@ const FREE_TEXT = [
 //
 // A checker that always reports the same known-safe lines is one people learn
 // to ignore, and then it stops catching the real ones too. Each entry says why.
+// `file` and `near` narrow an entry to one place: the file name and a piece of
+// text that must be on the same line, so the same expression elsewhere is
+// still checked.
 const ALLOW = [
-  { match: "${row.label}",
-    why: "modal() escapes its title" },
-  { match: "${tier.name}",
-    why: "goes to confirmDelete, which passes it to modal(), which escapes" },
+  { match: "${s.name}", file: 'blips.js', near: 'return `${',
+    why: "sprite file names from the built-in list; every caller escapes the whole URL" },
+  { match: "${c.label}", file: 'bsettings.js', near: 'return c ?',
+    why: "built-in GTA colour names; fmt() output is escaped where it is shown" },
+  { match: "${l.data.label}", file: 'builder.js', near: 'is empty',
+    why: "issue text, escaped where the issue list renders it" },
+  { match: "${z.data.label}", file: 'builder.js', near: 'sub: `Zone #',
+    why: "issue sub-line, escaped where the issue list renders it" },
+  { match: "${c.data.label}", file: 'builder.js', near: 'sub: `Crate type',
+    why: "issue sub-line, escaped where the issue list renders it" },
+  { match: "${l.data.label}", file: 'builder.js', near: 'sub: `Loot table',
+    why: "issue sub-line, escaped where the issue list renders it" },
+  { match: "${d.label}", file: 'builder.js', near: '.toLowerCase().includes(q)',
+    why: "search text, never rendered" },
+  { match: "${d.notes}", file: 'builder.js', near: '.toLowerCase().includes(q)',
+    why: "search text, never rendered" },
+  { match: "${i.label}", file: 'builder.js', near: 'const hay = `',
+    why: "search text, never rendered" },
+  { match: "${def.data.label}", file: 'builder.js', near: "sel('crate'",
+    why: "option label; sel() escapes every option" },
+  { match: "${S.loot[0].data.label}", file: 'builder.js', near: "sel('loot'",
+    why: "option label; sel() escapes every option" },
+  { match: "${z.data.label}", file: 'builder.js', near: "group: 'Drop zones'",
+    why: "palette label, escaped where the palette renders" },
+  { match: "${res.data.label}", file: 'builder.js', near: 'XS.toast(',
+    why: "toasts go in through textContent" },
+  { match: "${d.label}", file: 'builder.js', near: 'XS.toast(',
+    why: "toasts go in through textContent" },
+  { match: "${d.label || 'this zone'}", file: 'builder.js', near: "XS.rpc('b:place'",
+    why: "sent to the game as text UI, not markup" },
+  { match: "${d.label}", file: 'builder.js', near: 'd.label = `',
+    why: "a copy's new name, escaped wherever it is shown" },
+  { match: "${t.name}", file: 'builder.js', near: 'modal({',
+    why: "modal() escapes its title and text" },
+  { match: "${x ? x.label : 'the zone'}", file: 'builder.js', near: 'modal({',
+    why: "modal() escapes its title and text" },
+  { match: "${z.data.label}", file: 'mock.js', near: 'fail(',
+    why: "browser preview only; errors show as toasts through textContent" },
 ];
 
 const root = process.argv[2] || 'html/js';
@@ -83,7 +120,7 @@ for (const file of files) {
     for (const m of line.matchAll(EVENT_ATTR)) attrRanges.push([m.index, m.index + m[0].length]);
 
     for (const m of line.matchAll(RE)) {
-      if (ALLOW.some((a) => a.match === m[0])) continue;
+      if (ALLOW.some((a) => a.match === m[0] && (!a.file || file.endsWith(a.file)) && (!a.near || line.includes(a.near)))) continue;
       if (sinkFor(m.index) === 'text') continue;
 
       const body = m[0].slice(2, -1);   // inside the ${ }

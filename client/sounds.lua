@@ -1,67 +1,53 @@
--- Audio cues. Native GTA frontend sounds, nothing to stream.
---
--- Driven off the state the server already sends rather than separate events, so
--- someone joining mid-drop does not get a sting for something that already
--- happened.
-
 function PlayDropSound(key)
     local cfg = Config.Sounds
     if not cfg or not cfg.Enabled then return end
-
     local sound = (cfg.Events or {})[key]
     if not sound or not sound.name then return end
-
     PlaySoundFrontend(-1, sound.name, sound.set, true)
 end
 
--- State transitions worth hearing. Tracked here rather than in client/main.lua
--- so the sync handler stays about state and this stays about noise.
-local lastState = nil
+local seen = {}
 
 CreateThread(function()
     while true do
         Wait(250)
-
-        local data = Airdrop.data
-        local state = data and data.state or nil
-
-        if state ~= lastState then
-            -- Only the transitions a player would want announced. Moving from
-            -- announced to inbound is the plane taking off, which nobody needs
-            -- a sound for.
-            if state == 'announced' then
-                PlayDropSound('announced')
-            elseif state == 'landed' then
-                PlayDropSound('landed')
-            elseif state == 'open' then
-                PlayDropSound('opened')
+        for id, e in pairs(Airdrop.drops) do
+            local state = e.data and e.data.state
+            if state ~= seen[id] then
+                if seen[id] ~= nil or state == 'announced' then
+                    if state == 'announced' then
+                        PlayDropSound('announced')
+                    elseif state == 'landed' then
+                        PlayDropSound('landed')
+                    elseif state == 'open' then
+                        PlayDropSound('opened')
+                    end
+                end
+                seen[id] = state
             end
-
-            lastState = state
+        end
+        for id in pairs(seen) do
+            if not Airdrop.drops[id] then seen[id] = nil end
         end
     end
 end)
 
--- Countdown ticks over the last ten seconds.
---
--- Driven from the same local deadline the HUD uses, and fired once per whole
--- second rather than per frame — the tick is a metronome, and a metronome that
--- fires sixty times a second is a buzz.
 CreateThread(function()
-    local lastTick = nil
-
+    local lastTick
     while true do
         Wait(200)
-
         local cfg = Config.Sounds
-        local data = Airdrop.data
-
-        if cfg and cfg.Enabled and cfg.CountdownTicks
-            and data and (data.state == 'announced' or data.state == 'inbound')
-            and data.landsAtMs then
-
-            local remaining = math.ceil((data.landsAtMs - GetGameTimer()) / 1000)
-
+        local soonest
+        if cfg and cfg.Enabled and cfg.CountdownTicks then
+            for _, e in pairs(Airdrop.drops) do
+                local data = e.data
+                if data and (data.state == 'announced' or data.state == 'inbound') and data.landsAtMs then
+                    if not soonest or data.landsAtMs < soonest then soonest = data.landsAtMs end
+                end
+            end
+        end
+        if soonest then
+            local remaining = math.ceil((soonest - GetGameTimer()) / 1000)
             if remaining > 0 and remaining <= 10 and remaining ~= lastTick then
                 lastTick = remaining
                 PlayDropSound('tick')

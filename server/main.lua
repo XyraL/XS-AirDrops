@@ -1,19 +1,4 @@
--- Airdrop state. The server owns where the crate is, when it landed, who
--- cracked it and what is inside.
---
--- The crate is NOT a networked entity. Under OneSync an entity is owned by
--- whichever client has it in scope, so a networked crate would end up owned by
--- a random player who could then delete it. It never moves or takes damage, so
--- every client draws its own local prop and the truth stays here as a
--- coordinate.
-
-local Drop = nil
-local lastLocationIndex = nil
-local nextDropAt = 0
-
--- The surface server/admin.lua drives. Kept deliberately small: read the state,
--- start one, stop one. Everything else about a drop is this file's business.
-Airdrops = {}
+Drops = { list = {}, nextAt = 0, lastZone = nil, zoneAt = {}, note = nil, ready = false, ticks = 0, away = {} }
 
 local function log(fmt, ...)
     if Config.Debug then
@@ -21,766 +6,792 @@ local function log(fmt, ...)
     end
 end
 
-local function playerCount()
-    return #GetPlayers()
+local function now()
+    return os.time()
 end
 
--- ── Access ───────────────────────────────────────────────────────────────────
--- Two separate questions with usually different answers: who is told a drop is
--- happening, and who may take from it. Both are answered here and enforced on
--- the server — the panel filtering a blip out of view would stop nobody.
-
-local function inList(value, list)
-    if not value then return false end
-    for _, entry in ipairs(list or {}) do
-        if entry == value then return true end
-    end
-    return false
+local function hourNow()
+    return tonumber(os.date('%H')) or 0
 end
 
 local function isPolice(src)
     local job = Framework.GetJob(src)
-    return job and inList(job.name, Config.Access.Police.Jobs)
+    return job ~= nil and Util.Has(Config.Access.Police.Jobs, job.name)
 end
 
-local function canSee(src)
-    if isPolice(src) and Config.Access.Police.CanSee then return true end
-
-    local rule = Config.Access.See
-    if rule.Everyone then return true end
-
+local function inGroups(src, jobs, gangs)
     local job = Framework.GetJob(src)
-    if job and inList(job.name, rule.Jobs) then return true end
-
+    if job and Util.Has(jobs, job.name) then return true end
     local gang = Framework.GetGang(src)
-    return gang and inList(gang.name, rule.Gangs) or false
+    return gang ~= nil and Util.Has(gangs, gang.name)
 end
 
-local function canCollect(src)
-    -- Police are checked first in both directions: an officer who may not loot
-    -- is refused even when Collect.Everyone is on, which is the whole point of
-    -- making them responders rather than another gang.
-    if isPolice(src) then return Config.Access.Police.CanCollect == true end
+local function seeRule(d)
+    local own = d and d.see
+    if type(own) == 'table' and own.rule and own.rule ~= 'default' then return own.rule, own.jobs, own.gangs end
+    local rule = Config.Access.See or {}
+    return rule.Mode or 'everyone', rule.Jobs, rule.Gangs
+end
 
+function Drops.Allows(d, job, gang, police)
+    local mode, jobs, gangs = seeRule(d)
+    local listed = Util.Has(jobs, job) or Util.Has(gangs, gang)
+    if mode == 'except' then return not listed end
+    if mode ~= 'only' then return true end
+    if police and Config.Access.Police.CanSee then return true end
+    return listed
+end
+
+function Drops.CanCollect(src, crate)
+    local access = (crate or {}).access or {}
+    if isPolice(src) then
+        if access.police == 'allow' then return true end
+        if access.police == 'deny' then return false end
+        return Config.Access.Police.CanCollect == true
+    end
+    if access.rule == 'everyone' then return true end
+    if access.rule == 'groups' then return inGroups(src, access.jobs, access.gangs) end
     local rule = Config.Access.Collect
     if rule.Everyone then return true end
-
-    local job = Framework.GetJob(src)
-    if job and inList(job.name, rule.Jobs) then return true end
-
-    local gang = Framework.GetGang(src)
-    return gang and inList(gang.name, rule.Gangs) or false
+    return inGroups(src, rule.Jobs, rule.Gangs)
 end
 
-local function isAdminSrc(src)
-    if Framework.IsAdmin(src) then return true end
-    for _, ace in ipairs(Config.AdminCommand.Aces or {}) do
-        if IsPlayerAceAllowed(src, ace) then return true end
-    end
-    return false
+local function canView(d, src)
+    if not src or Drops.away[src] or not Framework.GetPlayer(src) then return false end
+    if d.silent then return Framework.CanBuild(src) end
+    local job, gang = Framework.GetJob(src), Framework.GetGang(src)
+    return Drops.Allows(d, job and job.name, gang and gang.name, isPolice(src))
 end
 
--- Everyone currently allowed to know about a drop.
---
--- A silent drop narrows this to admins only. That is the whole mechanism: the
--- blip, the announcements, the countdown and the police alert all read from
--- this list, so restricting it here makes the drop invisible everywhere at once
--- rather than needing a check in each of them.
-local function viewers()
-    local silent = Drop and Drop.silent
+local function policeWhoMaySee(d)
+    local jobs = (Config.Police or {}).Jobs or {}
+    if #jobs == 0 then jobs = { 'police' } end
     local out = {}
-
-    for _, id in ipairs(GetPlayers()) do
-        local src = tonumber(id)
-        if src then
-            local allowed = silent and isAdminSrc(src) or (not silent and canSee(src))
-            if allowed then out[#out + 1] = src end
-        end
+    for _, job in ipairs(jobs) do
+        if Drops.Allows(d, job, nil, Util.Has(Config.Access.Police.Jobs, job)) then out[#out + 1] = job end
     end
-    return out
+    return out, #out < #jobs
 end
 
--- ── Location choice ──────────────────────────────────────────────────────────
+function Drops.Count()
+    local n = 0
+    for _ in pairs(Drops.list) do n = n + 1 end
+    return n
+end
 
--- Locations live in the database and are edited from the admin panel;
--- config.lua only seeded them on first run. Rows carry x/y/z rather than a
--- vec3, so they are normalised here once instead of at every call site.
-local function asLocation(row)
-    if not row then return nil end
+local function publicState(d)
+    local t = now()
+    local c = d.crate
     return {
-        id = row.id,
-        label = row.label,
-        coords = vec3(row.x, row.y, row.z),
-        weight = row.weight,
-        radius = row.radius,
+        id = d.id,
+        state = d.state,
+        silent = d.silent or nil,
+        label = Config.Announce.NameLocation and d.label or nil,
+        zoneRadius = d.radius,
+        approxRadius = d.approx,
+        approx = d.state == 'announced' or d.state == 'inbound',
+        coords = { x = d.coords.x, y = d.coords.y, z = d.coords.z },
+        landsIn = math.max(0, d.landsAt - t),
+        expiresIn = d.expiresAt and math.max(0, d.expiresAt - t) or nil,
+        heading = d.heading,
+        crackedBy = d.crackedByName,
+        emptied = d.emptied or nil,
+        crate = {
+            label = c.label, model = c.model, crackTime = c.crackTime, flyover = c.flyover, parachute = c.parachute,
+            flare = c.flare, smoke = c.smoke, plane = c.plane, altitude = c.altitude,
+            sprite = c.blip.sprite, colour = c.blip.colour, blip = c.blip.label,
+        },
     }
 end
 
-local function pickLocation(forcedLabel)
-    local locations = Data.Locations()
-    if #locations == 0 then return nil end
-
-    if forcedLabel then
-        for i, loc in ipairs(locations) do
-            if loc.label:lower():find(forcedLabel:lower(), 1, true) then
-                lastLocationIndex = i
-                return asLocation(loc)
-            end
-        end
-        return nil
-    end
-
-    -- Never the same place twice running, whatever the weights say. Repeats
-    -- are what make an event feel scripted.
-    local pool, sum = {}, 0
-    for i, loc in ipairs(locations) do
-        if i ~= lastLocationIndex or #locations == 1 then
-            pool[#pool + 1] = { index = i, loc = loc, weight = loc.weight or 1 }
-            sum = sum + (loc.weight or 1)
-        end
-    end
-
-    local roll, running = math.random() * sum, 0
-    for _, entry in ipairs(pool) do
-        running = running + entry.weight
-        if roll <= running then
-            lastLocationIndex = entry.index
-            return asLocation(entry.loc)
-        end
-    end
-
-    local fallback = pool[#pool]
-    if fallback then
-        lastLocationIndex = fallback.index
-        return asLocation(fallback.loc)
-    end
-    return nil
-end
-
--- The marker never moves. It sits on the real spot from announcement to
--- despawn and only the circle changes size: wide while inbound, tight once the
--- crate is down. Moving it meant driving somewhere and watching the zone
--- relocate on landing.
-local function approximate(coords)
-    return coords
-end
-
--- ── Broadcasting ─────────────────────────────────────────────────────────────
-
--- What a client is allowed to know, by state. The exact coordinate is withheld
--- until the crate is actually on the ground.
-local function publicState()
-    if not Drop then return nil end
-
-    local payload = {
-        id = Drop.id,
-        state = Drop.state,
-        silent = Drop.silent or nil,
-        label = Config.Announce.NameLocation and Drop.label or nil,
-        -- A location may override the global radius, so a cramped yard can
-        -- be tighter than an open field without changing both.
-        zoneRadius = Drop.radius or Config.Drop.ZoneRadius,
-        -- Durations, not timestamps. The client would otherwise have to
-        -- compare os.time() here against GetCloudTimeAsInt() there, and those
-        -- only agree when the server clock happens to be UTC. Seconds-from-now
-        -- needs no clock agreement at all.
-        landsIn = Drop.landsAt and math.max(0, Drop.landsAt - os.time()) or nil,
-        expiresIn = Drop.expiresAt and math.max(0, Drop.expiresAt - os.time()) or nil,
-    }
-
-    if Drop.state == 'announced' or Drop.state == 'inbound' then
-        payload.coords = Drop.approxCoords
-        payload.approx = true
-        payload.approxRadius = Config.Drop.ApproxBlipRadius
-    else
-        payload.coords = Drop.coords
-        payload.approx = false
-        payload.crackedBy = Drop.crackedByName
-        payload.emptied = Drop.emptied or nil
-    end
-
-    return payload
-end
-
--- Only to players allowed to know. Everyone else is told it ended, so changing
--- job mid-event drops the blip instead of leaving a stale one.
--- Nudges any open admin panel to re-read. Sent to everyone; the client ignores
--- it unless a panel is open. Must stay above broadcast(), which calls it.
 local function refreshPanels()
     TriggerClientEvent('XS-AirDrops:client:refreshPanel', -1)
 end
 
-local function broadcast()
-    local state = publicState()
-    local allowed = {}
-
-    refreshPanels()
-
-    for _, src in ipairs(viewers()) do
-        allowed[src] = true
-        TriggerClientEvent('XS-AirDrops:client:sync', src, state)
+local function broadcast(d)
+    local state = publicState(d)
+    for _, id in ipairs(GetPlayers()) do
+        local src = tonumber(id)
+        if src then
+            TriggerClientEvent('XS-AirDrops:client:sync', src, d.id, canView(d, src) and state or nil)
+        end
     end
+    refreshPanels()
+end
 
-    if state then
-        for _, id in ipairs(GetPlayers()) do
-            local src = tonumber(id)
-            if src and not allowed[src] then
-                TriggerClientEvent('XS-AirDrops:client:sync', src, nil)
-            end
+local function fill(d, values)
+    values = values or {}
+    local named = Config.Announce.NameLocation
+    values.zone = named and d.label or 'somewhere nearby'
+    values.near = named and (' near ' .. d.label) or ''
+    values.crate = d.crate.label
+    return values
+end
+
+local function announce(d, key, values)
+    if not Config.Announce.ToEveryone then return end
+    local text = (d.crate.announce or {})[key]
+    if not text or text == '' then return end
+    local message = Util.Fill(text, fill(d, values))
+    for _, id in ipairs(GetPlayers()) do
+        local src = tonumber(id)
+        if src and canView(d, src) then
+            TriggerClientEvent('XS-AirDrops:client:announce', src, message)
         end
     end
 end
 
-local function announce(message)
-    if not Config.Announce.ToEveryone then return end
-    for _, src in ipairs(viewers()) do
-        TriggerClientEvent('XS-AirDrops:client:announce', src, message)
-    end
-end
-
-local function webhook(title, description)
-    if Drop and Drop.silent then return end
-
+local function webhook(d, title, description)
+    if d.silent then return end
     local url = Config.Announce.Webhook
     if not url or url == '' then return end
-
     PerformHttpRequest(url, function() end, 'POST', json.encode({
         embeds = { {
             title = title,
             description = description,
-            color = 5814783,
+            color = 14708784,
             footer = { text = 'XS-AirDrops' },
         } },
     }), { ['Content-Type'] = 'application/json' })
 end
 
--- ── Lifecycle ────────────────────────────────────────────────────────────────
-
-local function endDrop(reason)
-    if not Drop then return end
-    log('drop %s ended (%s)', Drop.id, reason)
-
-    -- Whatever is still in the crate goes with it. The alternative is a stash
-    -- per drop left in the database forever, still holding the loot nobody
-    -- collected — and a despawning crate should take its contents with it
-    -- anyway.
-    if Drop.stashId then
-        Inv.ClearStash(Drop.stashId)
-    end
-
-    Data.RecordEnd(Drop.historyId, reason)
-
-    TriggerClientEvent('XS-AirDrops:client:sync', -1, nil)
-    Drop = nil
-
-    -- Schedule the next one from the moment this finished, not from when it
-    -- started, so a long contested drop does not immediately trigger another.
+local function interval()
     local sc = Config.Schedule
-    if sc.Enabled then
-        nextDropAt = os.time() + math.random(sc.MinInterval or 45, sc.MaxInterval or 90) * 60
+    local low = math.floor(tonumber(sc.MinInterval) or 45)
+    local high = math.max(low, math.floor(tonumber(sc.MaxInterval) or 90))
+    return math.random(low, high) * 60
+end
+
+local function endDrop(d, reason)
+    if not d or not Drops.list[d.id] then return end
+    log('drop %s ended (%s)', d.id, reason)
+    if d.stashId then Inv.ClearStash(d.stashId) end
+    Data.RecordEnd(d.historyId, reason)
+    Drops.list[d.id] = nil
+    TriggerClientEvent('XS-AirDrops:client:sync', -1, d.id, nil)
+    refreshPanels()
+    if not d.silent and Config.Schedule.Enabled then
+        local others = false
+        for _, other in pairs(Drops.list) do
+            if not other.silent then others = true end
+        end
+        if not others then Drops.nextAt = now() + interval() end
     end
 end
 
-local function land()
-    if not Drop or Drop.state ~= 'inbound' then return end
-
-    Drop.state = 'landed'
-    Drop.landedAt = os.time()
-    Drop.expiresAt = os.time() + (Config.Drop.AbandonedAfter or 900)
-
-    broadcast()
-    announce(('The crate has landed%s.'):format(
-        Config.Announce.NameLocation and (' near ' .. Drop.label) or ''))
-
-    log('drop %s landed at %s', Drop.id, Drop.label)
-
-    -- Police are told late on purpose. Whoever raced for the crate should get
-    -- there first; law enforcement arriving into an existing fight is a better
-    -- scene than law enforcement waiting at the coordinates.
-    if Config.Police.Alert and not Drop.silent then
-        SetTimeout((Config.Police.Delay or 45) * 1000, function()
-            if Drop and (Drop.state == 'landed' or Drop.state == 'open') then
-                TriggerClientEvent('XS-AirDrops:client:policeAlert', -1, {
-                    coords = Drop.coords,
-                    code = Config.Police.Code,
-                    title = Config.Police.Title,
-                    jobs = Config.Police.Jobs,
-                })
-            end
-        end)
-    end
+local function capped(d, at)
+    local cap = Config.Drop.MaxLifetime or 0
+    local since = d.landedAt or d.startedAt
+    if cap <= 0 or not since then return at end
+    return math.min(at, since + cap)
 end
 
-local function startDrop(location, calledBy, opts)
-    if Drop then return false, 'A drop is already active' end
+local function land(d)
+    local t = now()
+    d.state = 'landed'
+    d.landedAt = t
+    d.expiresAt = capped(d, t + (Config.Drop.AbandonedAfter or 900))
+    if d.crate.police.alert and not d.silent then
+        d.policeAt = t + (d.crate.police.delay or 45)
+    end
+    broadcast(d)
+    announce(d, 'landed')
+    log('drop %s landed at %s', d.id, d.label)
+end
+
+local function alertPolice(d)
+    d.policeSent = true
+    local jobs, partial = policeWhoMaySee(d)
+    if #jobs == 0 then
+        log('drop %s is hidden from police, so they are not called', d.id)
+        return
+    end
+    d.alertedBy = Dispatch.Alert({
+        id = d.id,
+        jobs = jobs,
+        partial = partial or nil,
+        coords = { x = d.coords.x, y = d.coords.y, z = d.coords.z },
+        code = Config.Police.Code,
+        title = Config.Police.Title,
+        description = 'Aircraft seen dropping cargo. Several parties likely heading there.',
+        sprite = d.crate.blip.sprite,
+        colour = d.crate.blip.colour,
+    }, function(src) return canView(d, src) end)
+end
+
+function Drops.Start(opts)
     opts = opts or {}
+    local zoneRec = opts.zone
+    if not zoneRec or not zoneRec.data then return false, 'Pick a drop zone.' end
+    local zone = zoneRec.data
+    if #zone.points == 0 then return false, ('"%s" has no landing points yet.'):format(zone.label) end
 
-    location = location or pickLocation()
-    if not location then return false, 'No usable location in Config.Locations' end
-
-    Drop = {
-        id = ('%d-%d'):format(os.time(), math.random(1000, 9999)),
-        label = location.label,
-        coords = location.coords,
-        approxCoords = approximate(location.coords),
-        radius = location.radius,
-        state = 'announced',
-        landsAt = os.time() + (Config.Drop.WarningTime or 90),
-        cracks = {},
-
-        -- A test drop: real crate, real loot, real cracking — but only admins
-        -- can see it, and it is kept out of the history and the webhook so a
-        -- test does not pollute the numbers you tune against.
-        silent = opts.silent == true,
-
-        historyId = nil,
-
-        -- A backstop, replaced with the real expiry once it lands. Without it,
-        -- a drop that somehow never lands stays active forever and blocks
-        -- every future drop, since only one runs at a time. Cheap insurance
-        -- against a timer that did not fire.
-        expiresAt = os.time() + (Config.Drop.WarningTime or 90) + 120,
-    }
-
-    if not Drop.silent then
-        Drop.historyId = Data.RecordStart(Drop, calledBy)
+    local max = math.max(1, tonumber(Config.Schedule.MaxActive) or 1)
+    if Drops.Count() >= max then
+        return false, ('%d drop%s already running. Cancel one, or raise "Drops at once" in Schedule.')
+            :format(Drops.Count(), Drops.Count() == 1 and ' is' or 's are')
+    end
+    for _, other in pairs(Drops.list) do
+        if other.zoneId == zoneRec.id then return false, ('"%s" already has a drop running.'):format(zone.label) end
     end
 
-    broadcast()
+    local crateRec = opts.crate or Data.CrateFor(zone)
+    if not crateRec then return false, 'There is no crate type to drop.' end
+    local lootRec = opts.loot or Data.LootFor(zone, crateRec)
+    if not lootRec then return false, 'There is no loot table to fill it.' end
 
-    announce(('Supply drop inbound%s — %d seconds out.'):format(
-        Config.Announce.NameLocation and (', ' .. Drop.label) or '',
-        Config.Drop.WarningTime or 90))
+    local index = tonumber(opts.point)
+    if not index or not zone.points[index] then index = math.random(#zone.points) end
+    local p = zone.points[index]
 
-    webhook('Supply drop inbound', ('**%s**%s'):format(
-        Drop.label, calledBy and ('\nCalled by ' .. calledBy) or ''))
+    local crate = Util.Copy(crateRec.data)
+    local flight = Util.FlightTime(crate, Config.Delivery)
+    local warning = math.max(math.floor(tonumber(Config.Drop.WarningTime) or 90), flight + 5)
+    local t = now()
 
-    log('drop %s announced for %s%s', Drop.id, Drop.label, calledBy and (' by ' .. calledBy) or '')
+    local d = {
+        id = ('%d-%d'):format(t, math.random(1000, 9999)),
+        zoneId = zoneRec.id,
+        label = zone.label,
+        point = index,
+        coords = vector3(p.x + 0.0, p.y + 0.0, p.z + 0.0),
+        radius = (zone.radius > 0 and zone.radius or (Config.Drop.ZoneRadius or 120.0)) + 0.0,
+        approx = (zone.approx > 0 and zone.approx or (Config.Drop.ApproxBlipRadius or 250.0)) + 0.0,
+        crate = crate,
+        crateId = crateRec.id,
+        crateLabel = crate.label,
+        loot = Util.Copy(lootRec.data),
+        lootId = lootRec.id,
+        lootLabel = lootRec.data.label,
+        heading = zone.heading >= 0 and zone.heading or math.random(0, 359),
+        flight = flight,
+        state = 'announced',
+        startedAt = t,
+        landsAt = t + warning,
+        expiresAt = t + warning + 180,
+        cracks = {},
+        searches = {},
+        silent = opts.silent == true,
+        calledBy = opts.by,
+        see = Util.Copy(zone.see),
+    }
+    while Drops.list[d.id] do d.id = ('%d-%d'):format(t, math.random(1000, 9999)) end
 
-    SetTimeout((Config.Drop.WarningTime or 90) * 1000, function()
-        if not Drop or Drop.state ~= 'announced' then return end
-        Drop.state = 'inbound'
-        broadcast()
+    Drops.list[d.id] = d
+    if not d.silent then
+        Drops.lastZone = zoneRec.id
+        Drops.zoneAt[zoneRec.id] = t
+        d.historyId = Data.RecordStart(d, opts.by)
+    end
 
-        -- The flyover is cosmetic and runs on each client. The crate becomes
-        -- real here regardless, so a client that cannot render the plane is
-        -- not left out of the event.
-        SetTimeout(Config.Delivery.Flyover and 12000 or 500, land)
-    end)
+    broadcast(d)
+    announce(d, 'inbound', { seconds = warning })
+    webhook(d, 'Supply drop inbound', ('**%s** · %s%s'):format(d.label, d.crateLabel, opts.by and ('\nCalled by ' .. opts.by) or ''))
+    log('drop %s announced for %s%s', d.id, d.label, opts.by and (' by ' .. opts.by) or '')
+    return true, d
+end
 
+function Drops.Cancel(id, reason)
+    local d = Drops.list[id]
+    if not d then return false, 'That drop is over already.' end
+    endDrop(d, reason or 'cancelled')
     return true
 end
 
--- ── Cracking ─────────────────────────────────────────────────────────────────
--- Anyone may start. First to finish opens it, and the server checks both ends:
--- you must have been near the crate when you started, still be near it when you
--- claim to have finished, and enough time must actually have passed.
-
--- Is anyone inside the contested zone? The expiry clock only runs out on an
--- empty one.
-local function anyoneInZone()
-    if not Drop or not Drop.coords then return false end
-
-    local radius = Drop.radius or Config.Drop.ZoneRadius or 120.0
-
+local function anyoneInZone(d)
     for _, id in ipairs(GetPlayers()) do
-        local src = tonumber(id)
-        local ped = src and GetPlayerPed(src)
-
-        if ped and ped ~= 0 then
-            if #(GetEntityCoords(ped) - Drop.coords) <= radius then return true end
-        end
+        local ped = GetPlayerPed(tonumber(id))
+        if ped and ped ~= 0 and #(GetEntityCoords(ped) - d.coords) <= d.radius then return true end
     end
     return false
 end
 
--- Someone part-way through the crack animation.
-local function anyoneCracking()
-    if not Drop or not Drop.cracks then return false end
-
-    local cutoff = os.time() - ((Config.Drop.CrackTime or 25) + 5)
-    for _, startedAt in pairs(Drop.cracks) do
+local function anyoneCracking(d)
+    local cutoff = now() - ((d.crate.crackTime or 25) + 5)
+    for _, startedAt in pairs(d.cracks) do
         if startedAt >= cutoff then return true end
     end
     return false
 end
 
-local function nearCrate(src)
-    if not Drop then return false end
+local function nearCrate(d, src)
     local ped = GetPlayerPed(src)
     if not ped or ped == 0 then return false end
-
     local pos = GetEntityCoords(ped)
     local reach = (Config.Drop.CrackDistance or 5.0) + 3.0
-
-    -- Horizontal distance, height checked separately and loosely. The crate is
-    -- placed on the ground under the stored point, which may itself have been
-    -- captured on top of an embankment — a 3D check fails on that height
-    -- difference alone. The crate never moves horizontally, so that is the axis
-    -- worth being strict about.
-    local flat = #(vector3(pos.x, pos.y, 0.0) - vector3(Drop.coords.x, Drop.coords.y, 0.0))
-    local drop = math.abs(pos.z - Drop.coords.z)
-
-    return flat <= reach and drop <= 25.0
+    return Util.Flat(pos, d.coords) <= reach and math.abs(pos.z - d.coords.z) <= 25.0
 end
 
-RegisterNetEvent('XS-AirDrops:server:beginCrack', function()
-    local src = source
+local function markEmptied(d)
+    if d.emptied then return end
+    d.emptied = true
+    d.expiresAt = capped(d, now() + (Config.Drop.EmptyLinger or 60))
+    announce(d, 'emptied')
+    broadcast(d)
+    log('drop %s emptied', d.id)
+end
 
-    if not Drop or Drop.state ~= 'landed' then
+local function expire(d)
+    local t = now()
+    local since = d.landedAt or d.startedAt
+    local cap = Config.Drop.MaxLifetime or 0
+    local pastCap = cap > 0 and (t - since) >= cap
+    local grace = Config.Drop.PresenceGrace or 120
+    local onGround = d.state == 'landed' or d.state == 'open'
+    if onGround and grace > 0 and not pastCap and not d.emptied and (anyoneInZone(d) or anyoneCracking(d)) then
+        d.expiresAt = capped(d, t + grace)
+        d.heldOpen = true
+        broadcast(d)
+        log('drop %s held, someone is still there', d.id)
+        return
+    end
+    endDrop(d, d.emptied and 'emptied' or (d.state == 'open' and 'looted out' or 'abandoned'))
+end
+
+function Drops.Tick()
+    local t = now()
+    Drops.ticks = Drops.ticks + 1
+    for id, d in pairs(Drops.list) do
+        if d.state == 'announced' and t >= d.landsAt - d.flight then
+            d.state = 'inbound'
+            broadcast(d)
+        end
+        if d.state == 'inbound' and t >= d.landsAt then land(d) end
+        if d.policeAt and not d.policeSent and t >= d.policeAt and (d.state == 'landed' or d.state == 'open') then
+            alertPolice(d)
+        end
+        if Drops.ticks % 4 == 0 and d.state == 'open' and not d.emptied and d.stashId and Inv.CanPrefillStash() then
+            if Inv.StashIsEmpty(d.stashId) == true then markEmptied(d) end
+        end
+        if Drops.list[id] and d.expiresAt and t >= d.expiresAt then expire(d) end
+    end
+end
+
+function Drops.Eligible(rec, ctx)
+    local z = rec.data
+    if not z.enabled then return false, 'switched off' end
+    if #z.points == 0 then return false, 'no landing points' end
+    for _, d in pairs(Drops.list) do
+        if d.zoneId == rec.id then return false, 'already has a drop' end
+    end
+    if not Data.CrateFor(z) then return false, 'no crate type' end
+    if ctx.manual then return true end
+    if ctx.players < z.minPlayers then return false, ('needs %d players'):format(z.minPlayers) end
+    if ctx.police < z.minPolice then return false, ('needs %d police'):format(z.minPolice) end
+    if not Util.InHours(z.hours, ctx.hour) then return false, 'outside its hours' end
+    local rest = (tonumber(Config.Schedule.ZoneCooldown) or 0) * 60
+    local last = Drops.zoneAt[rec.id]
+    if rest > 0 and last and ctx.now - last < rest then return false, 'resting' end
+    return true
+end
+
+function Drops.Context(manual)
+    return {
+        manual = manual == true,
+        now = now(),
+        hour = hourNow(),
+        players = #GetPlayers(),
+        police = #Framework.PoliceSources(true),
+    }
+end
+
+function Drops.PickZone(manual)
+    local ctx = Drops.Context(manual)
+    local pool = {}
+    for _, rec in ipairs(Data.ZoneList()) do
+        if Drops.Eligible(rec, ctx) then pool[#pool + 1] = rec end
+    end
+    if #pool == 0 then return nil, 'No zone can take a drop right now.' end
+    if #pool > 1 and Drops.lastZone then
+        for i = #pool, 1, -1 do
+            if pool[i].id == Drops.lastZone then table.remove(pool, i) end
+        end
+    end
+    local sum = 0
+    for _, rec in ipairs(pool) do sum = sum + rec.data.weight end
+    local roll, running = math.random() * sum, 0
+    for _, rec in ipairs(pool) do
+        running = running + rec.data.weight
+        if roll <= running then return rec end
+    end
+    return pool[#pool]
+end
+
+function Drops.ScheduleTick()
+    local sc = Config.Schedule
+    if not sc.Enabled then
+        Drops.note = 'off'
+        return
+    end
+    local t = now()
+    if Drops.nextAt == 0 then
+        Drops.nextAt = t + interval()
+        return
+    end
+    if t < Drops.nextAt then return end
+    if Drops.Count() >= math.max(1, tonumber(sc.MaxActive) or 1) then
+        Drops.note = 'full'
+        return
+    end
+    if #GetPlayers() < (tonumber(sc.MinPlayers) or 0) then
+        Drops.nextAt = t + 300
+        Drops.note = 'players'
+        log('too few players (%d/%d), trying again in 5 minutes', #GetPlayers(), sc.MinPlayers)
+        return
+    end
+    if not Util.InHours(sc.Hours, hourNow()) then
+        Drops.nextAt = t + 600
+        Drops.note = 'hours'
+        return
+    end
+    local rec, why = Drops.PickZone(false)
+    if not rec then
+        Drops.nextAt = t + 300
+        Drops.note = 'zones'
+        log('%s Trying again in 5 minutes.', why)
+        return
+    end
+    local ok, err = Drops.Start({ zone = rec, by = 'Schedule' })
+    if ok then
+        Drops.note = nil
+        Drops.nextAt = t + interval()
+    else
+        Drops.nextAt = t + 300
+        Drops.note = 'failed'
+        log('scheduled drop refused: %s', tostring(err))
+    end
+end
+
+function Drops.Status()
+    local sc = Config.Schedule
+    return {
+        enabled = sc.Enabled == true,
+        nextIn = sc.Enabled and Drops.nextAt > 0 and math.max(0, Drops.nextAt - now()) or nil,
+        note = Drops.note,
+        players = #GetPlayers(),
+        police = #Framework.PoliceSources(true),
+        running = Drops.Count(),
+        max = math.max(1, tonumber(sc.MaxActive) or 1),
+        hour = hourNow(),
+    }
+end
+
+function Drops.AdminList()
+    local out = {}
+    local t = now()
+    for _, d in pairs(Drops.list) do
+        out[#out + 1] = {
+            id = d.id, state = d.state, label = d.label, zoneId = d.zoneId, point = d.point,
+            crate = d.crateLabel, crateId = d.crateId, loot = d.lootLabel, lootId = d.lootId,
+            silent = d.silent, calledBy = d.calledBy or '', crackedBy = d.crackedByName, emptied = d.emptied,
+            heldOpen = d.heldOpen, coords = { x = d.coords.x, y = d.coords.y, z = d.coords.z },
+            landsIn = math.max(0, d.landsAt - t), expiresIn = d.expiresAt and math.max(0, d.expiresAt - t) or nil,
+            age = t - d.startedAt, policeIn = (d.policeAt and not d.policeSent) and math.max(0, d.policeAt - t) or nil,
+            policeSent = d.policeSent == true, radius = d.radius,
+        }
+    end
+    table.sort(out, function(a, b) return a.age > b.age end)
+    return out
+end
+
+local function dropFor(src, id)
+    local d = Drops.list[id]
+    if not d or not canView(d, src) then return nil end
+    return d
+end
+
+RegisterNetEvent('XS-AirDrops:server:beginCrack', function(id)
+    local src = source
+    local d = dropFor(src, id)
+    if not d or d.state ~= 'landed' then
         Framework.Notify(src, 'There is no crate to open.', 'error')
         return
     end
-
-    -- The client measures to the crate prop and the server measures to the
-    -- stored coordinate, so these can disagree by a metre or two. Saying so
-    -- beats a progress bar that completes and does nothing.
-    if not nearCrate(src) then
+    if not nearCrate(d, src) then
         Framework.Notify(src, 'You are not close enough to the crate.', 'error')
         return
     end
-
-    if not canCollect(src) then
+    if not Drops.CanCollect(src, d.crate) then
         Framework.Notify(src, Config.Access.DeniedMessage, 'error')
         return
     end
-
-    Drop.cracks[src] = os.time()
-    log('%s started cracking %s', GetPlayerName(src), Drop.id)
+    d.cracks[src] = now()
+    log('%s started cracking %s', GetPlayerName(src), d.id)
 end)
 
-RegisterNetEvent('XS-AirDrops:server:finishCrack', function()
+RegisterNetEvent('XS-AirDrops:server:finishCrack', function(id)
     local src = source
-    if not Drop or Drop.state ~= 'landed' then return end
-    if not canCollect(src) then return end
+    local d = dropFor(src, id)
+    if not d or d.state ~= 'landed' then return end
+    if not Drops.CanCollect(src, d.crate) then return end
 
-    -- No record of them starting. Usually means beginCrack was refused, and
-    -- that refusal already explained itself.
-    local startedAt = Drop.cracks[src]
+    local startedAt = d.cracks[src]
     if not startedAt then
-        Framework.Notify(src, 'That did not count — start again at the crate.', 'error')
+        Framework.Notify(src, 'That did not count. Start again at the crate.', 'error')
         return
     end
 
-    -- A second of grace for latency, and no more. Without this check a client
-    -- can simply send finishCrack immediately after beginCrack.
-    local elapsed = os.time() - startedAt
-    if elapsed < (Config.Drop.CrackTime or 25) - 1 then
-        log('%s finished too fast (%ds) — ignored', GetPlayerName(src), elapsed)
+    local elapsed = now() - startedAt
+    if elapsed < (d.crate.crackTime or 25) - 1 then
+        log('%s finished too fast (%ds), ignored', GetPlayerName(src), elapsed)
+        return
+    end
+    if not nearCrate(d, src) then
+        Framework.Notify(src, 'You moved too far from the crate.', 'error')
         return
     end
 
-    if not nearCrate(src) then return end
+    local t = now()
+    d.state = 'open'
+    d.cracks = {}
+    d.crackedBy = src
+    d.crackedByName = Framework.GetName(src) or GetPlayerName(src)
+    d.expiresAt = capped(d, t + (Config.Drop.OpenDuration or 300))
+    d.stashId = ('xsairdrop_%s'):format((d.id:gsub('[^%w]', '')))
 
-    Drop.state = 'open'
-    Drop.crackedBy = src
-    Drop.crackedByName = GetPlayerName(src)
-    Drop.expiresAt = os.time() + (Config.Drop.OpenDuration or 300)
-    Drop.stashId = 'airdrop_' .. Drop.id
-
-    local rolled = Loot.Roll()
-    Inv.RegisterStash(Drop.stashId, 'Supply Crate', Config.Loot.Slots, Config.Loot.MaxWeight)
+    local rolled = Loot.Roll(d.loot)
+    Inv.RegisterStash(d.stashId, d.crate.label ~= '' and d.crate.label or 'Supply Crate', d.crate.slots, d.crate.maxWeight, d.coords)
 
     if Inv.CanPrefillStash() then
         for _, entry in ipairs(rolled) do
-            Inv.AddToStash(Drop.stashId, entry.item, entry.count)
+            Inv.AddToStash(d.stashId, entry.item, entry.count)
         end
-        Drop.loot = nil
+        d.pending = nil
     else
-        -- Backends that build a stash lazily get their contents when the first
-        -- player opens it. Held here rather than dropped on the floor.
-        Drop.loot = rolled
+        d.pending = Util.Copy(rolled)
     end
+    d.rolled = rolled
 
-    Data.RecordCrack(Drop.historyId, Framework.GetCitizenId(src), Drop.crackedByName, rolled)
-
-    broadcast()
-    announce(('%s has opened the crate.'):format(Drop.crackedByName))
-    webhook('Crate opened', ('**%s** opened the crate at **%s**'):format(Drop.crackedByName, Drop.label))
-
-    log('drop %s cracked by %s, %d stacks', Drop.id, Drop.crackedByName, #rolled)
+    Data.RecordCrack(d.historyId, Framework.GetCitizenId(src), d.crackedByName, rolled)
+    broadcast(d)
+    announce(d, 'opened', { name = d.crackedByName })
+    webhook(d, 'Crate opened', ('**%s** opened the crate at **%s**'):format(d.crackedByName, d.label))
+    log('drop %s cracked by %s, %d stacks', d.id, d.crackedByName, #rolled)
 end)
 
--- Looting is a separate check from cracking: the crate stays open to everyone
--- once cracked, so proximity is verified again here.
---
--- Two paths, because the inventories genuinely differ.
---
--- ox_inventory can be handed a filled container, so the crate is a real shared
--- stash: several people rummage in the same box and the inventory sorts out who
--- grabbed what. That is the version this script is designed around.
---
--- The other five backends only create a stash when a player opens one, and none
--- expose a reliable way to put items into a stash nobody has opened yet. Rather
--- than ship them an empty crate, the loot is handed out a few stacks at a time
--- to whoever is searching. It keeps the scramble — being first still matters,
--- and being second still gets you something.
--- ox_inventory hands the crate over as a real stash, so the server never sees
--- items leave. Polled only while one is open. Other backends already know,
--- because the server hands the loot out itself.
-CreateThread(function()
-    while true do
-        Wait(4000)
-
-        if Drop and Drop.state == 'open' and not Drop.emptied and Drop.stashId then
-            -- nil means the backend cannot tell us, which is not the same as
-            -- "not empty" and must not trigger anything.
-            if Inv.StashIsEmpty(Drop.stashId) == true then markEmptied() end
-        end
-    end
-end)
-
--- Cleaned out. Does NOT end the drop — the empty crate stays for
--- Config.Drop.EmptyLinger so late arrivals can see they missed it.
-function markEmptied()
-    if not Drop or Drop.emptied then return end
-
-    Drop.emptied = true
-    Drop.expiresAt = os.time() + (Config.Drop.EmptyLinger or 60)
-
-    announce('The crate has been emptied.')
-    broadcast()
-    log('drop %s emptied — lingering %ds', Drop.id, Config.Drop.EmptyLinger or 60)
-end
-
-RegisterNetEvent('XS-AirDrops:server:loot', function()
+RegisterNetEvent('XS-AirDrops:server:loot', function(id)
     local src = source
-    if not Drop or Drop.state ~= 'open' then return end
-    if not nearCrate(src) then return end
-
-    if not canCollect(src) then
+    local d = dropFor(src, id)
+    if not d or d.state ~= 'open' then return end
+    if not nearCrate(d, src) then
+        Framework.Notify(src, 'You are not close enough to the crate.', 'error')
+        return
+    end
+    if not Drops.CanCollect(src, d.crate) then
         Framework.Notify(src, Config.Access.DeniedMessage, 'error')
         return
     end
 
     if Inv.CanPrefillStash() then
-        TriggerClientEvent('XS-AirDrops:client:openStash', src, Drop.stashId, {
-            slots = Config.Loot.Slots,
-            maxWeight = Config.Loot.MaxWeight,
-        })
+        TriggerClientEvent('XS-AirDrops:client:openStash', src, d.stashId, { slots = d.crate.slots, maxWeight = d.crate.maxWeight })
         return
     end
 
-    if not Drop.loot or #Drop.loot == 0 then
+    if not d.pending or #d.pending == 0 then
         Framework.Notify(src, 'The crate is empty.', 'error')
         return
     end
 
-    local take = Config.Loot.StacksPerSearch or 2
+    local who = Framework.GetCitizenId(src) or tostring(src)
+    local cap = d.crate.searchesPerPlayer or 0
+    if cap > 0 and (d.searches[who] or 0) >= cap then
+        Framework.Notify(src, 'You have taken your share of this crate.', 'error')
+        return
+    end
+
     local given = 0
-
-    for _ = 1, take do
-        local entry = table.remove(Drop.loot, 1)
+    for _ = 1, d.crate.stacksPerSearch or 2 do
+        local entry = table.remove(d.pending, 1)
         if not entry then break end
-
         if Inv.CanCarry(src, entry.item, entry.count) and Inv.AddItem(src, entry.item, entry.count) then
             given = given + 1
         else
-            -- Put it back at the front. A full player must not delete loot for
-            -- everyone else by walking up to the crate.
-            table.insert(Drop.loot, 1, entry)
+            table.insert(d.pending, 1, entry)
             Framework.Notify(src, 'You cannot carry any more.', 'error')
             break
         end
     end
 
     if given > 0 then
-        Framework.Notify(src, ('You pull %d item stack%s from the crate.'):format(
-            given, given == 1 and '' or 's'), 'success')
+        d.searches[who] = (d.searches[who] or 0) + 1
+        Framework.Notify(src, ('You pull %d item stack%s from the crate.'):format(given, given == 1 and '' or 's'), 'success')
     end
-
-    if #Drop.loot == 0 then markEmptied() end
+    if #d.pending == 0 then markEmptied(d) end
 end)
 
--- qb-inventory and ps-inventory open stashes from the server.
-RegisterNetEvent('XS-AirDrops:server:openStash', function(id)
+RegisterNetEvent('XS-AirDrops:server:openStash', function(stashId)
     local src = source
-    if not Drop or Drop.stashId ~= id or Drop.state ~= 'open' then return end
-    if not nearCrate(src) then return end
-
+    local d
+    for _, other in pairs(Drops.list) do
+        if other.stashId == stashId then d = other end
+    end
+    if not d or d.state ~= 'open' or not dropFor(src, d.id) then return end
+    if not nearCrate(d, src) then return end
+    if not Drops.CanCollect(src, d.crate) then return end
     if Inv.name == 'qb-inventory' then
-        exports['qb-inventory']:OpenInventory(src, id, {
-            label = 'Supply Crate',
-            maxweight = Config.Loot.MaxWeight,
-            slots = Config.Loot.Slots,
-        })
+        exports['qb-inventory']:OpenInventory(src, stashId, { label = d.crate.label, maxweight = d.crate.maxWeight, slots = d.crate.slots })
     elseif Inv.name == 'ps-inventory' then
-        TriggerClientEvent('ps-inventory:client:openStash', src, id)
+        TriggerClientEvent('ps-inventory:client:openStash', src, stashId)
     end
 end)
 
--- ── Scheduling ───────────────────────────────────────────────────────────────
-
--- Server local time, not in-game time. A server owner setting an hour window
--- means "when my players are awake", which is a wall-clock question.
-local function withinHours()
-    local h = Config.Schedule.Hours
-    if not h or not h.from or not h.to then return true end
-
-    local hour = tonumber(os.date('%H'))
-    if h.from <= h.to then
-        return hour >= h.from and hour < h.to
-    end
-    -- Window crossing midnight, e.g. 18 → 4.
-    return hour >= h.from or hour < h.to
-end
-
-CreateThread(function()
-    -- Wait for the database, or the first interval is picked from config.lua
-    -- and any saved override is ignored until the next drop.
-    while not Data.ready do Wait(250) end
-
-    local sc = Config.Schedule
-    if not sc.Enabled then return end
-
-    nextDropAt = os.time() + math.random(sc.MinInterval or 45, sc.MaxInterval or 90) * 60
-
-    while true do
-        Wait(30000)
-
-        if not Drop and os.time() >= nextDropAt then
-            if playerCount() < (sc.MinPlayers or 1) then
-                -- Try again shortly rather than skipping the slot entirely,
-                -- or a server that fills up late never gets a drop at all.
-                nextDropAt = os.time() + 300
-                log('too few players (%d/%d), retrying in 5m', playerCount(), sc.MinPlayers)
-            elseif not withinHours() then
-                nextDropAt = os.time() + 600
-            else
-                startDrop()
-            end
-        end
-    end
-end)
-
--- ── Admin command ────────────────────────────────────────────────────────────
-
-if Config.AdminCommand.Enabled then
-    RegisterCommand(Config.AdminCommand.Command, function(src, args)
-        -- Console always allowed.
-        if src > 0 then
-            local allowed = Framework.IsAdmin(src)
-            for _, ace in ipairs(Config.AdminCommand.Aces or {}) do
-                if IsPlayerAceAllowed(src, ace) then allowed = true break end
-            end
-            if not allowed then
-                Framework.Notify(src, 'You do not have permission to call a drop.', 'error')
-                return
-            end
-        end
-
-        local wanted = args[1] and table.concat(args, ' ') or nil
-        local location = wanted and pickLocation(wanted) or nil
-
-        if wanted and not location then
-            local msg = ('No location matching "%s".'):format(wanted)
-            if src > 0 then Framework.Notify(src, msg, 'error') else print(msg) end
-            return
-        end
-
-        local ok, err = startDrop(location, src > 0 and GetPlayerName(src) or 'Console')
-        if not ok then
-            if src > 0 then Framework.Notify(src, err, 'error') else print(err) end
-        end
-    end, false)
-end
-
--- ── Housekeeping ─────────────────────────────────────────────────────────────
-
--- Expiry. Cleanup for crates nobody came for, not a countdown that deletes the
--- event under the people playing it: if anyone is there it holds for another
--- PresenceGrace, up to MaxLifetime.
-CreateThread(function()
-    while true do
-        Wait(5000)
-
-        if Drop and Drop.expiresAt and os.time() >= Drop.expiresAt then
-            local since = Drop.landedAt or Drop.startedAt or os.time()
-            local cap = Config.Drop.MaxLifetime or 0
-            local pastCap = cap > 0 and (os.time() - since) >= cap
-
-            -- Nothing left to protect once it is empty, so the linger is a hard
-            -- timer. Holding an empty box open because someone is stood beside
-            -- it just delays the tidy-up.
-            if not pastCap and not Drop.emptied
-                and (anyoneInZone() or anyoneCracking()) then
-                Drop.expiresAt = os.time() + (Config.Drop.PresenceGrace or 120)
-                Drop.heldOpen = true
-
-                -- Clients are told, so the countdown reflects the new deadline
-                -- rather than sitting at zero.
-                broadcast()
-                log('drop %s held — someone is still there', Drop.id)
-            else
-                if pastCap then log('drop %s hit MaxLifetime', Drop.id) end
-                endDrop(Drop.emptied and 'emptied'
-                    or (Drop.state == 'open' and 'looted out' or 'abandoned'))
-            end
-        end
-    end
-end)
-
--- A player who joins mid-event should see it.
 RegisterNetEvent('XS-AirDrops:server:requestSync', function()
-    TriggerClientEvent('XS-AirDrops:client:sync', source, publicState())
+    local src = source
+    local list = {}
+    for _, d in pairs(Drops.list) do
+        if canView(d, src) then list[#list + 1] = publicState(d) end
+    end
+    TriggerClientEvent('XS-AirDrops:client:syncAll', src, list)
 end)
 
 local function leave(src)
-    if Drop and Drop.cracks then Drop.cracks[src] = nil end
+    for _, d in pairs(Drops.list) do d.cracks[src] = nil end
 end
 
 AddEventHandler('playerDropped', function()
-    leave(source)
+    local src = tonumber(source)
+    if not src then return end
+    leave(src)
+    Drops.away[src] = nil
 end)
 
 AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
-    leave(tonumber(src) or source)
+    src = tonumber(src) or tonumber(source)
+    if not src or src <= 0 then return end
+    leave(src)
+    Drops.away[src] = true
+    TriggerClientEvent('XS-AirDrops:client:syncAll', src, {})
 end)
 
-AddEventHandler('onResourceStop', function(resource)
-    if resource == GetCurrentResourceName() and Drop then
-        TriggerClientEvent('XS-AirDrops:client:sync', -1, nil)
+local function resync(src)
+    if not src or src <= 0 then return end
+    for _, d in pairs(Drops.list) do
+        TriggerClientEvent('XS-AirDrops:client:sync', src, d.id, canView(d, src) and publicState(d) or nil)
     end
+end
+
+AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
+    local src = type(player) == 'table' and player.PlayerData and tonumber(player.PlayerData.source)
+    if not src then return end
+    Drops.away[src] = nil
+    resync(src)
+end)
+
+AddEventHandler('QBCore:Server:OnJobUpdate', function(src)
+    resync(tonumber(src) or tonumber(source))
+end)
+
+AddEventHandler('QBCore:Server:OnGangUpdate', function(src)
+    resync(tonumber(src) or tonumber(source))
+end)
+
+function Drops.ResyncAll()
+    for _, d in pairs(Drops.list) do broadcast(d) end
+end
+
+function Drops.ZoneChanged(rec)
+    if not rec or not rec.data then return end
+    for _, d in pairs(Drops.list) do
+        if d.zoneId == rec.id then
+            d.see = Util.Copy(rec.data.see)
+            broadcast(d)
+        end
+    end
+end
+
+function Drops.FindZone(text)
+    if not text or text == '' then return nil end
+    local wanted = text:lower()
+    local id = tonumber((text:gsub('^#', '')))
+    for _, rec in ipairs(Data.ZoneList()) do
+        if (id and rec.id == id) or rec.data.label:lower():find(wanted, 1, true) then return rec end
+    end
+    return nil
+end
+
+local function reply(src, msg, kind)
+    if src > 0 then Framework.Notify(src, msg, kind or 'inform') else print('[XS-AirDrops] ' .. msg) end
+end
+
+CreateThread(function()
+    while not Data.ready do Wait(250) end
+    if not Config.AdminCommand.Enabled then return end
+    RegisterCommand(Config.AdminCommand.Command or 'airdrop', function(src, args)
+        if src > 0 and not Framework.CanBuild(src) then
+            reply(src, 'You do not have permission to call a drop.', 'error')
+            return
+        end
+        local wanted = args[1] and table.concat(args, ' ') or nil
+        local rec, why
+        if wanted then
+            rec = Drops.FindZone(wanted)
+            if not rec then return reply(src, ('No drop zone matching "%s".'):format(wanted), 'error') end
+        else
+            rec, why = Drops.PickZone(true)
+            if not rec then return reply(src, why, 'error') end
+        end
+        local ok, err = Drops.Start({ zone = rec, by = src > 0 and GetPlayerName(src) or 'Console' })
+        if not ok then return reply(src, err, 'error') end
+        reply(src, ('Drop called at %s.'):format(rec.data.label), 'success')
+    end, false)
 end)
 
 CreateThread(function()
-    Wait(1000)
-    Data.Init()
-
-    -- After Data.Init, because a saved GuaranteeAtLeast is validated against the
-    -- tier list, and before the scheduler runs, because it reads the interval.
+    Wait(500)
+    Db.Init()
     Settings.Load()
-
-    Loot.Validate()
-    print(('^2[XS-AirDrops]^0 v%s loaded · framework=%s · inventory=%s · %d locations'):format(
+    Data.Init()
+    for _, rec in ipairs(Data.LootList()) do
+        for _, p in ipairs(Loot.Problems(rec.data)) do
+            print(('^3[XS-AirDrops]^0 loot table "%s": %s'):format(rec.data.label, p.text))
+        end
+    end
+    local zones = 0
+    for _, rec in ipairs(Data.ZoneList()) do
+        if rec.data.enabled and #rec.data.points > 0 then zones = zones + 1 end
+    end
+    print(('^2[XS-AirDrops]^0 v%s loaded · framework=%s · inventory=%s · dispatch=%s · %d drop zones ready'):format(
         GetResourceMetadata(GetCurrentResourceName(), 'version', 0) or '?',
-        Framework.name or 'NONE', Inv.name or 'NONE', #Data.Locations()))
+        Framework.name or 'NONE', Inv.name or 'NONE', Dispatch.name or 'notify', zones))
+    Drops.ready = true
+    if Config.Schedule.Enabled then Drops.nextAt = now() + interval() end
+
+    local lastSchedule = 0
+    while true do
+        Wait(1000)
+        local ok, err = pcall(Drops.Tick)
+        if not ok then print(('^1[XS-AirDrops]^0 drop tick failed: %s'):format(tostring(err))) end
+        if now() - lastSchedule >= 15 then
+            lastSchedule = now()
+            ok, err = pcall(Drops.ScheduleTick)
+            if not ok then print(('^1[XS-AirDrops]^0 schedule failed: %s'):format(tostring(err))) end
+        end
+    end
 end)
 
--- ── API for server/admin.lua and other resources ─────────────────────────────
+exports('IsDropActive', function() return Drops.Count() > 0 end)
 
-function Airdrops.Active()
-    return Drop ~= nil
-end
+exports('GetDrop', function()
+    for _, d in pairs(Drops.list) do
+        if not d.silent then return publicState(d) end
+    end
+    return nil
+end)
 
-function Airdrops.PublicState()
-    return publicState()
-end
+exports('GetDrops', function()
+    local out = {}
+    for _, d in pairs(Drops.list) do
+        if not d.silent then out[#out + 1] = publicState(d) end
+    end
+    return out
+end)
 
-function Airdrops.Start(location, calledBy, opts)
-    return startDrop(location, calledBy, opts)
-end
-
-function Airdrops.Cancel(reason)
-    endDrop(reason or 'cancelled')
-end
-
--- Seconds until the scheduler fires, or nil when it is switched off.
-function Airdrops.NextDropIn()
-    if not Config.Schedule.Enabled then return nil end
-    return math.max(0, nextDropAt - os.time())
-end
-
-exports('IsDropActive', Airdrops.Active)
-exports('GetDrop', function() return Drop and publicState() or nil end)
-exports('StartDrop', function(label) return startDrop(label and pickLocation(label) or nil, 'Export') end)
+exports('StartDrop', function(zone, opts)
+    opts = type(opts) == 'table' and opts or {}
+    local rec
+    if zone then rec = Drops.FindZone(tostring(zone)) else rec = Drops.PickZone(true) end
+    if not rec then return false, 'No drop zone found' end
+    local ok, res = Drops.Start({ zone = rec, by = opts.by or 'Export', silent = opts.silent == true })
+    if not ok then return false, res end
+    return true, res.id
+end)

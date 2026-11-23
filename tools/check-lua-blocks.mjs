@@ -25,7 +25,7 @@ function strip(src) {
 const count = (s, word) => (s.match(new RegExp('\\b' + word + '\\b', 'g')) || []).length;
 
 let bad = 0;
-const files = globSync('{server,client,bridge}/*.lua', { cwd: process.cwd() });
+const files = globSync('{server,client,bridge,shared}/*.lua', { cwd: process.cwd() });
 
 for (const file of files.sort()) {
   const s = strip(readFileSync(file, 'utf8'));

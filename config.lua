@@ -3,139 +3,143 @@ Config = {}
 -- Force a bridge instead of auto-detecting. 'auto' is almost always right.
 Config.Bridges = {
     framework = 'auto',   -- auto | qbx_core | qb-core
-    inventory = 'auto',   -- auto | ox_inventory | qb-inventory | qs-inventory | ps-inventory
+    inventory = 'auto',   -- auto | ox_inventory | qb-inventory | qs-inventory | codem-inventory | core_inventory | ps-inventory
+    dispatch = 'auto',    -- auto | none | XS-Dispatch | ps-dispatch | qs-dispatch | cd_dispatch | core_dispatch | rcore_dispatch | linden_outlawalert
 }
-
--- Supply drops get announced, flown in, and left on the ground for whoever
--- turns up. It never touches damage or PvP rules, so it runs on any server.
 
 Config.Debug = false
 
--- ── When drops happen ────────────────────────────────────────────────────────
-Config.Schedule = {
-    Enabled = true,
+-- Supply drops get announced, flown in and left on the ground for whoever
+-- turns up. It never touches damage or PvP rules, so it runs on any server.
+--
+-- Almost everything below can be changed in game from /airdrops, the builder.
+-- Anything changed there is saved in the database and wins over this file.
+-- Drop zones, crate types and loot tables live only in the builder once the
+-- script has started for the first time.
 
-    -- Minutes between drops. The gap is randomised between these so players
-    -- cannot set a timer and be standing on the spot when it lands.
-    MinInterval = 45,
-    MaxInterval = 90,
+-- Who can open the builder and call drops by hand. Any one of these passing
+-- is enough. The usual way is one line in server.cfg:
+--   add_ace group.admin xs.airdrops allow
+Config.Admin = {
+    acePermission = 'xs.airdrops',
 
-    -- No drop unless this many players are connected. A crate that lands for
-    -- one person to free-loot is worse than no crate.
-    MinPlayers = 8,
+    -- Framework permission groups (QBox / QBCore).
+    groups = { 'admin', 'god' },
 
-    -- Optional hour window (24h), in SERVER LOCAL time, not in-game time.
-    -- Empty means any time.
-    -- e.g. { from = 18, to = 4 } for evenings and nights only.
-    Hours = {},
+    -- Rockstar licence identifiers, e.g. 'license:110000112345678'.
+    licenses = {},
 }
 
--- Staff can call one on demand: /airdrop [location]
 Config.AdminCommand = {
+    -- /airdrops opens the builder.
+    Builder = 'airdrops',
+
+    -- /airdrop [zone] calls a drop straight away.
     Enabled = true,
     Command = 'airdrop',
 
-    -- Falls back to the framework's own admin check when this is empty.
-    -- Otherwise, any of these ace permissions will do.
+    -- Any of these aces also opens the builder and calls drops.
     Aces = { 'command.airdrop', 'xs.airdrops' },
 }
 
--- ── The drop itself ──────────────────────────────────────────────────────────
+-- When drops happen. Builder > Schedule.
+Config.Schedule = {
+    Enabled = true,
+
+    -- Minutes between drops, random between these two.
+    MinInterval = 45,
+    MaxInterval = 90,
+
+    -- No drop unless this many players are online.
+    MinPlayers = 8,
+
+    -- Server time, 0-23. -1 on both means any time.
+    -- e.g. { from = 18, to = 4 } for evenings and nights only.
+    Hours = { from = -1, to = -1 },
+
+    -- How many drops can run at the same time.
+    MaxActive = 1,
+
+    -- Minutes before the same zone can be picked again.
+    -- 0 means only "never the same zone twice in a row".
+    ZoneCooldown = 0,
+}
+
+-- The drop itself. Builder > Settings.
 Config.Drop = {
-    -- Seconds between the announcement and the plane arriving. This window is
-    -- the whole point: it is when people decide to go, gear up and travel.
+    -- Seconds from the announcement to the crate landing.
     WarningTime = 90,
 
-    -- How close the first blip is to the truth. The exact spot only appears
-    -- when the crate lands, so the warning window is a race to the right area
-    -- rather than a queue on the exact coordinate.
+    -- Wide circle shown while it is inbound. Zones can set their own.
     ApproxBlipRadius = 250.0,
 
-    -- Radius of the contested area drawn on the map once it lands.
+    -- Contested circle once it lands. Zones can set their own.
     ZoneRadius = 120.0,
 
-    -- Seconds of cracking before the crate opens. Long enough that someone can
-    -- interrupt you, short enough that a lone player is not stuck kneeling for
-    -- a minute in the open.
+    -- Seconds of cracking. Only used for the first crate type, which the
+    -- builder owns after that.
     CrackTime = 25,
 
-    -- Once open, how long the crate stays lootable before it despawns.
+    -- How long an opened crate stays lootable.
     OpenDuration = 300,
 
-    -- Uncracked crate gives up after this. Only counts down on an empty zone —
-    -- if anyone is there, or mid-crack, it holds instead. See PresenceGrace.
+    -- An unopened crate gives up after this, but only while the zone is empty.
     AbandonedAfter = 900,
 
-    -- An emptied crate sticks around this long so late arrivals can see they
-    -- missed it. Hard timer — standing in the zone does not extend it.
+    -- An emptied crate stays this long so late arrivals see they missed it.
     EmptyLinger = 60,
 
-    -- Granted each time the timer runs out with someone still in the zone, so a
-    -- crate outlives whoever is actually using it.
+    -- Extra time each time it would expire with someone still in the zone.
     PresenceGrace = 120,
 
-    -- Gone this long after landing no matter what, so nobody can camp one all
-    -- night. 0 = no cap.
+    -- Gone this long after landing no matter what. 0 = no cap.
     MaxLifetime = 3600,
 
-    -- Metres a player may drift from the crate before cracking cancels. The
-    -- server re-checks this on completion too, so a teleport does not help.
-    -- How close you must be to crack or loot. The server allows a little more,
-    -- to cover the crate sitting lower than the point it was placed from.
+    -- How close you must be to open or search the crate.
     CrackDistance = 5.0,
 
-    -- How near you must be for the on-screen status to show. Inside the zone
-    -- always shows it. 0 = always on screen.
+    -- How players open the crate: 'key' (walk up and press E) or 'target'
+    -- (ox_target or qb-target). Without a target script it falls back to E.
+    OpenWith = 'key',
+
+    -- The on-screen timer only shows this close. 0 = always.
     HudDistance = 400.0,
 }
 
--- ── Delivery ─────────────────────────────────────────────────────────────────
+-- The plane. Model, crate prop and height are only used for the first crate
+-- type; the builder owns them after that.
 Config.Delivery = {
-    -- A plane flies over and the crate parachutes down. Turning this off makes
-    -- the crate simply appear at the drop point, which is far less interesting
-    -- but costs nothing to render on a heavily loaded server.
     Flyover = true,
-
     PlaneModel = 'titan',
-    -- Falls back to a working prop if this one will not load.
     CrateModel = 'prop_mil_crate_01',
 
+    -- Metres above the landing point.
     Altitude = 320.0,
+
     PlaneSpeed = 90.0,
 
-    -- Metres out the plane spawns and despawns.
+    -- Metres out the plane appears and leaves.
     SpawnDistance = 900.0,
 }
 
--- ── Where drops land ─────────────────────────────────────────────────────────
--- Empty on purpose. Build these in game from /airdrops, standing on the spot.
---
--- Anything here is seeded into the database on first start only; after that the
--- database owns them and this list is ignored.
+-- Only read on the very first start, to make the first drop zones. Build
+-- zones in game from /airdrops instead, standing on the spot.
 Config.Locations = {}
 
--- ── Loot ─────────────────────────────────────────────────────────────────────
--- Loot is rolled ON THE SERVER, at the moment the crate is cracked. Not when it
--- is announced, and never on a client — otherwise the contents are knowable
--- before the fight, and the fight is the product.
+-- Only read on the very first start, to make the first loot table and crate
+-- type. Builder > Loot tables owns them after that.
 Config.Loot = {
-    -- Slots and weight of the crate container.
     Slots = 12,
     MaxWeight = 80000,
 
-    -- How many item stacks the crate contains.
     MinStacks = 4,
     MaxStacks = 7,
 
-    -- Only used on inventories that cannot be handed a pre-filled container
-    -- (everything except ox_inventory). There the crate yields this many stacks
-    -- per search instead of opening as a shared box, so several people can pull
-    -- something out of the same crate rather than the first arrival taking it
-    -- all. See the note on the loot handler in server/main.lua.
+    -- Inventories that cannot be handed a filled crate (everything except
+    -- ox_inventory) give out this many stacks per search instead.
     StacksPerSearch = 2,
 
-    -- Every roll picks a tier first, then an item from it. Chances are relative
-    -- weights, not percentages, so you can add a tier without rebalancing.
+    -- Weights are relative, not percentages.
     Tiers = {
         {
             name = 'common',
@@ -180,81 +184,41 @@ Config.Loot = {
         },
     },
 
-    -- Guarantees at least one roll from this tier or better, so a crate is
-    -- never entirely bandages after a five-minute fight. Set to nil to disable.
+    -- At least one roll from this tier or better. nil turns it off.
     GuaranteeAtLeast = 'uncommon',
 }
 
--- ── Announcements ────────────────────────────────────────────────────────────
 Config.Announce = {
-    -- Whether to post the text announcements at all (inbound, landed, opened).
-    -- Who receives them is decided by Config.Access.See, not here.
-    --
-    -- Turning this off leaves the blip and the on-screen countdown in place and
-    -- removes the chat-style notifications, which suits a server that would
-    -- rather players find out by looking at the map.
     ToEveryone = true,
-
-    -- Name the rough area in the announcement. Turning this off makes drops
-    -- much harder to find and heavily favours players who happen to be nearby.
     NameLocation = true,
 
-    -- Post to Discord as well. Leave empty to disable.
+    -- Discord webhook for drops. Leave empty to turn it off.
     Webhook = '',
 }
 
--- ── Police ───────────────────────────────────────────────────────────────────
--- An unregistered aircraft dropping cargo is a police matter. This fires a
--- dispatch call so law enforcement has a legitimate reason to attend, which
--- turns a gang fight into a three-way one.
 Config.Police = {
+    -- Only used for the first crate type; each crate type has its own.
     Alert = true,
-
-    -- Seconds after landing before police are told. The delay gives whoever is
-    -- racing for the crate a head start, which is the fair version of this.
     Delay = 45,
 
     Jobs = { 'police', 'sheriff', 'sasp' },
-
-    -- Uses XS-Dispatch when present, then any common dispatch resource,
-    -- then a plain notification. See client/dispatch.lua.
     Code = '10-66',
     Title = 'Unregistered Cargo Drop',
 }
 
--- ── Blips ────────────────────────────────────────────────────────────────────
 Config.Blip = {
+    -- Pin icon and colour are only used for the first crate type.
     Sprite = 478,
-    Colour = 5,          -- the pin itself
-    Scale  = 1.1,
+    Colour = 5,
+    Scale = 1.1,
 
-    -- The contested area, drawn as a filled circle rather than a lone pin.
     ShowRadius = true,
-    RadiusColour = 1,    -- 1 = red
+    RadiusColour = 1,
     RadiusAlpha = 90,
-
-    -- The wider search circle while the drop is inbound. Different colour from
-    -- the live zone on purpose.
-    ApproxColour = 5,    -- 5 = yellow
+    ApproxColour = 5,
     ApproxAlpha = 60,
 }
 
--- ── Admin ────────────────────────────────────────────────────────────────────
--- Used by the framework bridge to decide who may call a drop by hand.
--- Any one of these passing is enough.
-Config.Admin = {
-    acePermission = 'xs.airdrops',
-
-    -- Framework permission groups (QBox / QBCore).
-    groups = { 'admin', 'god' },
-
-    -- Rockstar licence identifiers, e.g. 'license:110000112345678'.
-    -- Leave this empty unless you specifically need it — anything you put here
-    -- is committed to your repo along with everything else.
-    licenses = {},
-}
-
--- ── Notification styling ─────────────────────────────────────────────────────
 Config.NotifyStyle = {
     title = 'Airdrop',
     icon = 'parachute-box',
@@ -262,18 +226,15 @@ Config.NotifyStyle = {
     duration = 7000,
 }
 
--- ── Who takes part ───────────────────────────────────────────────────────────
--- See    — who is told about a drop and gets the blip
--- Collect — who can crack it and take from it
---
--- Config.Access.Police overrides both for those jobs. Setting CanCollect false
--- there is the usual way to make police responders rather than another gang.
+-- See: who gets the blip, the circles, the messages and the crate itself.
+--   Mode = 'everyone', 'only' (just the jobs and gangs listed) or 'except'
+--   (everyone but them, police too). Drop zones can set their own.
+-- Collect: the default rule for who can open a crate. Crate types can set their own.
 Config.Access = {
     See = {
-        Everyone = true,
-        -- Only consulted when Everyone = false.
-        Jobs  = {},          -- e.g. { 'police', 'ambulance' }
-        Gangs = {},          -- e.g. { 'ballas', 'families' }
+        Mode  = 'everyone',
+        Jobs  = {},
+        Gangs = {},
     },
 
     Collect = {
@@ -282,43 +243,32 @@ Config.Access = {
         Gangs = {},
     },
 
-    -- Police are called out separately because they are the usual exception.
     Police = {
         Jobs = { 'police', 'sheriff', 'sasp' },
-
-        -- Officers always get told, even when See.Everyone is false. Set this
-        -- to false and police find out the same way everyone else does.
         CanSee = true,
-
-        -- Whether an officer can crack and loot a crate. Setting this false is
-        -- what turns a drop into a three-way scene: criminals fight for it,
-        -- police turn up to stop them, and nobody in uniform is there to loot.
         CanCollect = true,
     },
 
-    -- Shown when someone who is not allowed tries to open a crate.
     DeniedMessage = 'You have no idea how to open this.',
 }
 
--- ── Sound ────────────────────────────────────────────────────────────────────
 -- Native GTA frontend sounds. No audio files to ship.
 Config.Sounds = {
     Enabled = true,
 
     Events = {
-        -- A drop has been called. The one cue that has to cut through.
-        announced = { name = 'Beast_Barrage',      set = 'GTAO_Beast_Barrage_Sounds' },
-
-        -- Last ten seconds of the warning window, once per second.
-        tick      = { name = 'TIMER_STOP',         set = 'HUD_MINI_GAME_SOUNDSET' },
-
-        -- The crate is on the ground.
-        landed    = { name = 'CHECKPOINT_PERFECT', set = 'HUD_MINI_GAME_SOUNDSET' },
-
-        -- Somebody got it open.
+        announced = { name = 'Beast_Barrage',       set = 'GTAO_Beast_Barrage_Sounds' },
+        tick      = { name = 'TIMER_STOP',          set = 'HUD_MINI_GAME_SOUNDSET' },
+        landed    = { name = 'CHECKPOINT_PERFECT',  set = 'HUD_MINI_GAME_SOUNDSET' },
         opened    = { name = 'ROBBERY_MONEY_TOTAL', set = 'HUD_FRONTEND_CUSTOM_SOUNDSET' },
     },
 
-    -- Last ten seconds tick audibly.
     CountdownTicks = true,
+}
+
+-- The freecam used to place landing points.
+Config.Builder = {
+    showExisting = true,
+    showSeconds = 10,
+    cameraSpeed = { normal = 8.0, fast = 40.0, slow = 1.5 },
 }

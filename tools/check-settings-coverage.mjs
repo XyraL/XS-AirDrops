@@ -25,9 +25,27 @@ const DELIBERATE = {
 
   'Announce.Webhook': 'a credential; anyone who can post to it can post as you',
 
-  'Loot.Tiers': 'edited in the Loot tab, which owns them once seeded',
+  'Bridges.dispatch': 'detected at boot; changing it live cannot re-detect',
+  'AdminCommand.Builder': 'the command is registered at boot',
+
+  'Loot.Tiers': 'seeds the first loot table; Loot tables in the builder own it after that',
+  'Loot.Slots': 'seeds the first crate type; Crate types in the builder own it after that',
+  'Loot.MaxWeight': 'seeds the first crate type',
+  'Loot.MinStacks': 'seeds the first loot table',
+  'Loot.MaxStacks': 'seeds the first loot table',
+  'Loot.StacksPerSearch': 'seeds the first crate type',
+  'Loot.GuaranteeAtLeast': 'seeds the first loot table',
+  'Drop.CrackTime': 'seeds the first crate type',
+  'Delivery.PlaneModel': 'seeds the first crate type',
+  'Delivery.CrateModel': 'seeds the first crate type',
+  'Delivery.Altitude': 'seeds the first crate type',
+  'Police.Alert': 'seeds the first crate type',
+  'Police.Delay': 'seeds the first crate type',
+  'Blip.Sprite': 'seeds the first crate type',
+  'Blip.Colour': 'seeds the first crate type',
+  'Builder.cameraSpeed': 'its fields are exposed',
   'Sounds.Events': 'sound name and set pairs; a table, not a setting',
-  'Schedule.Hours': 'a list of allowed hours; wants its own control, not a text box',
+  'Schedule.Hours': 'its fields are exposed',
 
   // Parents whose children are all exposed individually.
   'Access.See': 'its fields are exposed',
@@ -36,11 +54,11 @@ const DELIBERATE = {
 };
 
 const cfg = readFileSync('config.lua', 'utf8');
-const schema = readFileSync('server/settings.lua', 'utf8');
+const schema = readFileSync('shared/settings.lua', 'utf8');
 
 // Settings the panel already drives.
 const exposed = new Set(
-  [...schema.matchAll(/key = '([^']+)'/g)].map((m) => m[1]),
+  [...schema.matchAll(/\{ '([A-Za-z]+\.[^']+)', '/g)].map((m) => m[1]),
 );
 
 // Every `Section.Key` in config.lua: a top-level `Config.Section = {` followed
